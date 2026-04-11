@@ -20,7 +20,7 @@ def client() -> BOPTESTClient:
     return BOPTESTClient("http://localhost:8000")
 
 
-def _mock_response(status_code: int = 200, json_data: dict | None = None, text: str = "") -> httpx.Response:
+def _mock_response(status_code: int = 200, json_data: dict[str, object] | None = None, text: str = "") -> httpx.Response:
     """Build a fake httpx.Response."""
     import json as json_mod
 
@@ -99,8 +99,9 @@ async def test_get_measurements(client: BOPTESTClient) -> None:
 async def test_error_handling(client: BOPTESTClient) -> None:
     """Non-200 response raises BOPTESTError with descriptive message."""
     mock_resp = _mock_response(500, json_data={"message": "Internal server error"})
-    with patch.object(client.client, "post", new_callable=AsyncMock, return_value=mock_resp), pytest.raises(
-        BOPTESTError, match="advance failed.*500"
+    with (
+        patch.object(client.client, "post", new_callable=AsyncMock, return_value=mock_resp),
+        pytest.raises(BOPTESTError, match="advance failed.*500"),
     ):
         await client.advance("abc-123")
 
@@ -108,7 +109,8 @@ async def test_error_handling(client: BOPTESTClient) -> None:
 @pytest.mark.asyncio
 async def test_timeout(client: BOPTESTClient) -> None:
     """Timeout raises httpx.TimeoutException."""
-    with patch.object(
-        client.client, "post", new_callable=AsyncMock, side_effect=httpx.TimeoutException("timed out")
-    ), pytest.raises(httpx.TimeoutException):
+    with (
+        patch.object(client.client, "post", new_callable=AsyncMock, side_effect=httpx.TimeoutException("timed out")),
+        pytest.raises(httpx.TimeoutException),
+    ):
         await client.advance("abc-123")

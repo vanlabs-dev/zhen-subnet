@@ -7,6 +7,8 @@ Tests are skipped automatically when BOPTEST is not available.
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+
 import httpx
 import numpy as np
 import pytest
@@ -36,7 +38,7 @@ async def client() -> BOPTESTClient:
 
 
 @pytest.fixture
-async def running_testcase(client: BOPTESTClient) -> str:
+async def running_testcase(client: BOPTESTClient) -> AsyncGenerator[str]:
     """Select a testcase and return its testid. Stop it after the test."""
     testid = await client.select_testcase(TESTCASE_ID)
     yield testid
@@ -61,7 +63,7 @@ async def test_advance_and_collect(client: BOPTESTClient, running_testcase: str)
     await client.initialize(testid, start_time=0.0, warmup_period=0.0)
     await client.set_step(testid, step=3600.0)
 
-    measurements: list[dict] = []
+    measurements: list[dict[str, object]] = []
     for _ in range(24):
         data = await client.advance(testid)
         measurements.append(data)
@@ -191,18 +193,18 @@ async def test_compare_rc_vs_boptest(client: BOPTESTClient, running_testcase: st
         rc_temps = rc_temps[:min_len]
         boptest_temps = boptest_temps[:min_len]
 
-    # Compute CVRMSE
-    predicted = np.array(rc_temps, dtype=np.float64)
-    measured = np.array(boptest_temps, dtype=np.float64)
-    cvrmse = compute_cvrmse(predicted, measured)
+    # Compute CVRMSE using the dict-based interface
+    predicted_dict = {"zone_air_temperature_C": rc_temps}
+    measured_dict = {"zone_air_temperature_C": boptest_temps}
+    cvrmse = compute_cvrmse(predicted_dict, measured_dict)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"RC Network vs BOPTEST Comparison ({hours} hours)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"BOPTEST temp range: [{min(boptest_temps):.2f}, {max(boptest_temps):.2f}] C")
     print(f"RC temp range:      [{min(rc_temps):.2f}, {max(rc_temps):.2f}] C")
-    print(f"CVRMSE (uncalibrated): {cvrmse:.4f} ({cvrmse*100:.1f}%)")
-    print(f"{'='*60}")
+    print(f"CVRMSE (uncalibrated): {cvrmse:.4f} ({cvrmse * 100:.1f}%)")
+    print(f"{'=' * 60}")
     print("This gap is what miners need to close through calibration.")
 
     # Test always passes - we just log the gap

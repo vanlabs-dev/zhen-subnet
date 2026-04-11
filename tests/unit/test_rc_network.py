@@ -129,10 +129,12 @@ class TestPhysics:
 
         # The model computes Q_envelope at each step. We verify by checking
         # that the result differs from what a series calculation would produce.
-        backend_series_wall = _make_backend({
-            "wall_r_value": R_wall + R_roof,
-            "roof_r_value": 1e12,  # Effectively infinite (no roof path)
-        })
+        backend_series_wall = _make_backend(
+            {
+                "wall_r_value": R_wall + R_roof,
+                "roof_r_value": 1e12,  # Effectively infinite (no roof path)
+            }
+        )
 
         result_parallel = backend.run(0, 48)
         result_series = backend_series_wall.run(0, 48)

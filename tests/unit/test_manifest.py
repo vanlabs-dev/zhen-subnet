@@ -61,9 +61,7 @@ def test_validate_manifest_missing_fields(loader: ManifestLoader) -> None:
     """Manifest with missing required fields returns errors."""
     bad_manifest = {
         "version": "v0.0.1",
-        "test_cases": [
-            {"id": "incomplete_case"}
-        ],
+        "test_cases": [{"id": "incomplete_case"}],
     }
     errors = loader.validate_manifest(bad_manifest)
     assert len(errors) > 0
@@ -75,7 +73,7 @@ def test_validate_manifest_missing_fields(loader: ManifestLoader) -> None:
 
 def test_validate_manifest_missing_version(loader: ManifestLoader) -> None:
     """Manifest without version key is flagged."""
-    bad_manifest = {"test_cases": []}
+    bad_manifest: dict[str, list[object]] = {"test_cases": []}
     errors = loader.validate_manifest(bad_manifest)
     assert any("version" in e for e in errors)
 

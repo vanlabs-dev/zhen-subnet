@@ -39,7 +39,7 @@ class ManifestLoader:
         if "test_cases" not in manifest:
             raise ManifestError("Manifest missing required field: test_cases")
 
-        return manifest
+        return dict(manifest)
 
     def get_test_case(self, manifest: dict[str, Any], test_case_id: str) -> dict[str, Any] | None:
         """Look up a test case by ID.
@@ -53,7 +53,7 @@ class ManifestLoader:
         """
         for tc in manifest.get("test_cases", []):
             if tc.get("id") == test_case_id:
-                return tc
+                return dict(tc)
         return None
 
     def validate_manifest(self, manifest: dict[str, Any]) -> list[str]:

@@ -8,6 +8,8 @@ Validators only.
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 
 
@@ -44,7 +46,7 @@ class BOPTESTClient:
         resp = await self.client.post(f"{self.url}/testcases/{testcase_id}/select")
         self._check_response(resp, "select_testcase")
         data = resp.json()
-        return data["testid"]
+        return str(data["testid"])
 
     async def initialize(self, testid: str, start_time: float, warmup_period: float) -> None:
         """Initialize the simulation to a start time with warmup.
@@ -65,7 +67,7 @@ class BOPTESTClient:
         )
         self._check_response(resp, "initialize")
 
-    async def advance(self, testid: str) -> dict:
+    async def advance(self, testid: str) -> dict[str, Any]:
         """Advance the simulation by one communication step.
 
         Endpoint: POST /advance/{testid}
@@ -81,12 +83,11 @@ class BOPTESTClient:
         """
         resp = await self.client.post(f"{self.url}/advance/{testid}", json={})
         self._check_response(resp, "advance")
-        data = resp.json()
-        return data["payload"]
+        data: dict[str, Any] = resp.json()
+        payload: dict[str, Any] = data["payload"]
+        return payload
 
-    async def get_results(
-        self, testid: str, point_names: list[str], start_time: float, final_time: float
-    ) -> dict:
+    async def get_results(self, testid: str, point_names: list[str], start_time: float, final_time: float) -> dict[str, Any]:
         """Retrieve simulation results for a time period.
 
         Endpoint: PUT /results/{testid}
@@ -108,8 +109,9 @@ class BOPTESTClient:
             json={"point_names": point_names, "start_time": start_time, "final_time": final_time},
         )
         self._check_response(resp, "get_results")
-        data = resp.json()
-        return data["payload"]
+        data: dict[str, Any] = resp.json()
+        payload: dict[str, Any] = data["payload"]
+        return payload
 
     async def set_step(self, testid: str, step: float) -> None:
         """Set the communication step size in seconds.
@@ -142,10 +144,10 @@ class BOPTESTClient:
         """
         resp = await self.client.get(f"{self.url}/name/{testid}")
         self._check_response(resp, "get_name")
-        data = resp.json()
-        return data["payload"]["name"]
+        data: dict[str, Any] = resp.json()
+        return str(data["payload"]["name"])
 
-    async def get_measurements(self, testid: str) -> dict:
+    async def get_measurements(self, testid: str) -> dict[str, Any]:
         """Get available measurement points for the test case.
 
         Endpoint: GET /measurements/{testid}
@@ -161,8 +163,9 @@ class BOPTESTClient:
         """
         resp = await self.client.get(f"{self.url}/measurements/{testid}")
         self._check_response(resp, "get_measurements")
-        data = resp.json()
-        return data["payload"]
+        data: dict[str, Any] = resp.json()
+        payload: dict[str, Any] = data["payload"]
+        return payload
 
     async def stop(self, testid: str) -> None:
         """Stop a running test case instance.
@@ -193,9 +196,7 @@ class BOPTESTClient:
                 detail = resp.json()
             except Exception:
                 detail = resp.text
-            raise BOPTESTError(
-                f"BOPTEST {operation} failed (HTTP {resp.status_code}): {detail}"
-            )
+            raise BOPTESTError(f"BOPTEST {operation} failed (HTTP {resp.status_code}): {detail}")
 
 
 class BOPTESTError(Exception):
