@@ -2572,6 +2572,7 @@ name = "zhen-subnet"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "docker" },
     { name = "httpx" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -2582,7 +2583,6 @@ dependencies = [
 [package.optional-dependencies]
 bittensor = [
     { name = "bittensor" },
-    { name = "docker" },
 ]
 
 [package.dev-dependencies]
@@ -2597,7 +2597,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "bittensor", marker = "extra == 'bittensor'" },
-    { name = "docker", marker = "extra == 'bittensor'" },
+    { name = "docker" },
     { name = "httpx" },
     { name = "numpy" },
     { name = "scipy" },

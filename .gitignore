@@ -51,3 +51,8 @@ coverage.xml
 
 # Compiled/cached simulation data
 *.fmu.cache
+
+# Design docs (private until mainnet)
+docs/MECHANISM.md
+docs/ARCHITECTURE.md
+docs/IMPLEMENTATION.md

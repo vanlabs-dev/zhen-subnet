@@ -16,10 +16,11 @@ dependencies = [
     "numpy",
     "scipy",
     "httpx",
+    "docker",
 ]
 
 [project.optional-dependencies]
-bittensor = ["bittensor", "docker"]
+bittensor = ["bittensor"]
 
 [dependency-groups]
 dev = [
