@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "zhen-subnet"
+version = "0.1.0"
+description = "Bittensor subnet for competitive simulation model calibration"
+readme = "docs/MECHANISM.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "vaN", email = "van@vanlabs.dev" },
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "httpx",
+]
+
+[project.optional-dependencies]
+bittensor = ["bittensor", "docker"]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "mypy",
+    "pytest",
+    "pytest-asyncio",
+    "scikit-optimize",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["validator", "miner", "protocol", "scoring", "simulation", "eval"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = "bittensor.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

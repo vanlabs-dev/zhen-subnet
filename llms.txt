@@ -1,0 +1,18 @@
+# Zhen Subnet
+> Bittensor subnet for competitive building energy simulation calibration
+
+## What it does
+Miners calibrate simplified building energy models (RC thermal networks) against complex BOPTEST emulator outputs. Validators verify calibration accuracy on held-out data using ASHRAE metrics (CVRMSE, NMBE, R-squared).
+
+## Key concepts
+- Two-model architecture: complex emulator (ground truth) + simplified model (calibration target)
+- Scoring: CVRMSE 50%, NMBE 25%, R-squared 15%, convergence efficiency 10%
+- Deterministic verification: all validators produce identical scores
+- Miner-local simulation: miners run all simulations on their own hardware
+
+## Documentation
+- Mechanism Design: docs/MECHANISM.md
+- Technical Architecture: docs/ARCHITECTURE.md
+- Implementation Plan: docs/IMPLEMENTATION.md
+- Mining Guide: docs/MINE.md (coming soon)
+- Scoring Formula: docs/SCORING.md (coming soon)

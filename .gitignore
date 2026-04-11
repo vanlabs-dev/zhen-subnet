@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+dist/
+build/
+*.egg-info/
+*.egg
+.venv/
+venv/
+
+# Type checking / linting
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code (agent memory is personal, agent definitions are shared)
+.claude/agent-memory/
+.claude/settings.json
+.claude/settings.local.json
+
+# Docker
+*.log
+
+# Test case data (large files pulled during setup)
+.zhen/
+registry/test_cases/*/emulator/
+registry/test_cases/*/simplified/*.fmu
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Compiled/cached simulation data
+*.fmu.cache
