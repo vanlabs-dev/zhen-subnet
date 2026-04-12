@@ -11,9 +11,9 @@
 ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝
 ```
 
-**Competitive Simulation Calibration on Bittensor**
+**The calibration layer for digital twins on Bittensor**
 
-*Miners calibrate building energy digital twins. Validators verify with ASHRAE metrics. Truth wins.*
+*Decentralized digital twin calibration. Miners optimize simulation parameters against reality. Truth wins.*
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -25,16 +25,22 @@
 
 ## Status
 
-Active development. Core implementation complete (Phases 0-5).
+Active development. Core platform complete (Phases 0-5).
 
-- RC network thermal model
-- ASHRAE scoring engine (CVRMSE, NMBE, R-squared)
-- BOPTEST emulator integration
-- Validator round orchestration with parallel verification
+Zhen is a domain-agnostic calibration platform for digital twins. The first vertical is building energy simulation, with miners calibrating thermal models against BOPTEST emulator ground truth.
+
+**Platform (domain-agnostic):**
+- Scoring engine (CVRMSE, NMBE, R-squared) for any time-series calibration
+- Two-model architecture: complex ground truth vs simplified calibration target
+- Parallel verification with deterministic scoring
 - Reference miner with Bayesian optimization
-- Bittensor synapse protocol
 
-73 tests passing. Testnet deployment next.
+**First vertical: building energy**
+- RC network thermal models
+- BOPTEST emulator integration
+- ASHRAE-standard accuracy metrics
+
+Testnet live on Bittensor subnet 456. 78 tests passing.
 
 ## Documentation
 

@@ -1,7 +1,7 @@
 # Zhen Subnet
 
 ## What This Is
-Bittensor subnet for competitive simulation model calibration. Miners calibrate building energy digital twins against real-world measurements. Validators verify calibration accuracy using ASHRAE-standard metrics.
+Bittensor subnet for decentralized digital twin calibration. Domain-agnostic platform where miners compete to calibrate simplified simulation models against complex ground truth. Validators verify accuracy using industry-standard metrics. First vertical: building energy simulation.
 
 ## Routing Table
 - Design docs: docs/

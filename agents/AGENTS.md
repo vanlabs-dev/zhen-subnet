@@ -1,5 +1,7 @@
 # Zhen Subnet - Agent Definitions
 
+Zhen is a decentralized digital twin calibration platform on Bittensor. First vertical: building energy.
+
 | Agent | Scope | Model | Purpose |
 |-------|-------|-------|---------|
 | validator-agent | validator/ | sonnet | Emulator management, round orchestration, verification, scoring, weight setting |

@@ -1,18 +1,25 @@
 # Zhen Subnet
-> Bittensor subnet for competitive building energy simulation calibration
+> The calibration layer for digital twins on Bittensor
 
 ## What it does
-Miners calibrate simplified building energy models (RC thermal networks) against complex BOPTEST emulator outputs. Validators verify calibration accuracy on held-out data using ASHRAE metrics (CVRMSE, NMBE, R-squared).
+Zhen is a decentralized platform for competitive simulation model calibration. Miners optimize simplified digital twin parameters against complex ground truth simulations. Validators verify accuracy on held-out data using industry-standard metrics (CVRMSE, NMBE, R-squared).
+
+The architecture is domain-agnostic. Any domain with a complex simulation and a simplified model can be added as a test case. The first vertical is building energy simulation using BOPTEST emulators and RC network thermal models.
 
 ## Key concepts
 - Two-model architecture: complex emulator (ground truth) + simplified model (calibration target)
-- Scoring: CVRMSE 50%, NMBE 25%, R-squared 15%, convergence efficiency 10%
+- Domain-agnostic scoring: works on any time-series calibration problem
 - Deterministic verification: all validators produce identical scores
 - Miner-local simulation: miners run all simulations on their own hardware
+- Pluggable test case registry: new domains = new emulator + simplified model
+
+## Current vertical: building energy
+- Scoring: CVRMSE 50%, NMBE 25%, R-squared 15%, convergence efficiency 10%
+- Ground truth: BOPTEST containerized building emulators
+- Simplified models: RC network thermal models
+- Climate: Brussels, Belgium (BESTEST reference buildings)
 
 ## Documentation
-- Mechanism Design: docs/MECHANISM.md
-- Technical Architecture: docs/ARCHITECTURE.md
-- Implementation Plan: docs/IMPLEMENTATION.md
 - Mining Guide: docs/MINE.md (coming soon)
 - Scoring Formula: docs/SCORING.md (coming soon)
+- Validator Setup: docs/VALIDATE.md (coming soon)
