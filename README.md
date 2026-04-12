@@ -17,7 +17,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Status: Pre-development](https://img.shields.io/badge/status-pre--development-orange.svg)]()
+[![Status: Active Development](https://img.shields.io/badge/status-active--development-blue.svg)]()
 
 ---
 
@@ -25,7 +25,16 @@
 
 ## Status
 
-Pre-development. Design documents complete.
+Active development. Core implementation complete (Phases 0-5).
+
+- RC network thermal model
+- ASHRAE scoring engine (CVRMSE, NMBE, R-squared)
+- BOPTEST emulator integration
+- Validator round orchestration with parallel verification
+- Reference miner with Bayesian optimization
+- Bittensor synapse protocol
+
+73 tests passing. Testnet deployment next.
 
 ## Documentation
 
