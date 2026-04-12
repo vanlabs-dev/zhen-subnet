@@ -4,7 +4,6 @@ Extracts calibrated parameters and metadata from dendrite responses,
 filtering out failed or empty submissions.
 """
 
-from __future__ import annotations
 
 import logging
 from typing import Any
@@ -30,7 +29,10 @@ class ResponseParser:
         """
         submissions: dict[int, dict[str, Any]] = {}
 
-        for uid, response in zip(uids, responses, strict=True):
+        if len(uids) != len(responses):
+            logger.warning(f"UID/response count mismatch: {len(uids)} uids, {len(responses)} responses")
+
+        for uid, response in zip(uids, responses, strict=False):
             if response.calibrated_params is None:
                 logger.debug(f"Miner {uid}: no calibrated_params in response")
                 continue

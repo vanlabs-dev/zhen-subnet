@@ -44,6 +44,7 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "protocol/synapse.py" = ["UP035", "UP045"]
+"miner/main.py" = ["UP006", "UP035"]
 
 [tool.mypy]
 python_version = "3.10"

@@ -1,13 +1,11 @@
 """Miner entry point and Bittensor neuron lifecycle management."""
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import importlib.util
 import logging
 import os
-from typing import Any
+from typing import Any, Tuple
 
 if importlib.util.find_spec("bittensor"):
     import bittensor as bt
@@ -16,6 +14,7 @@ else:
 
 from miner.calibration.engine import CalibrationEngine
 from miner.network.axon_handler import CalibrationHandler
+from protocol.synapse import CalibrationSynapse
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,6 +25,16 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_NETUID = int(os.environ.get("ZHEN_NETUID", "456"))
 DEFAULT_NETWORK = os.environ.get("ZHEN_NETWORK", "test")
+
+
+def blacklist_fn(synapse: CalibrationSynapse) -> Tuple[bool, str]:
+    """Determine whether to blacklist request. Accepts all for now."""
+    return (False, "")
+
+
+def priority_fn(synapse: CalibrationSynapse) -> float:
+    """Assign priority to request. Equal priority for now."""
+    return 0.0
 
 
 class ZhenMiner:
@@ -78,11 +87,10 @@ class ZhenMiner:
         self.subtensor = bt.Subtensor(network=self.network)
         self.axon = bt.Axon(wallet=self.wallet)
 
-        # Attach handler for CalibrationSynapse
         self.axon.attach(
             forward_fn=self.handler.forward,
-            blacklist_fn=self.handler.blacklist,
-            priority_fn=self.handler.priority,
+            blacklist_fn=blacklist_fn,
+            priority_fn=priority_fn,
         )
 
         logger.info(f"Wallet: {wallet_name}/{wallet_hotkey}")

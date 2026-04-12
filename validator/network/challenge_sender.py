@@ -4,8 +4,6 @@ Broadcasts the calibration challenge to all active miners and collects
 responses within the tempo timeout window.
 """
 
-from __future__ import annotations
-
 import importlib.util
 import logging
 from typing import Any
@@ -59,9 +57,14 @@ class ChallengeSender:
                 axons=miners,
                 synapse=synapse,
                 timeout=timeout,
-                deserialize=False,
             )
-            return list(responses)
+
+            # Normalize to list (dendrite may return a single synapse or a list)
+            if responses is None:
+                return []
+            if isinstance(responses, list):
+                return responses
+            return [responses]
         except Exception as e:
             logger.error(f"Failed to send challenge: {e}")
             return []
