@@ -87,9 +87,7 @@ async def test_miner_closes_cvrmse_gap() -> None:
     print(f"{'=' * 60}")
 
     # Miner should achieve CVRMSE < 0.05 on training data
-    assert output.training_cvrmse < 0.05, (
-        f"Expected training CVRMSE < 0.05, got {output.training_cvrmse:.4f}"
-    )
+    assert output.training_cvrmse < 0.05, f"Expected training CVRMSE < 0.05, got {output.training_cvrmse:.4f}"
 
 
 @pytest.mark.asyncio
