@@ -20,7 +20,9 @@ def client() -> BOPTESTClient:
     return BOPTESTClient("http://localhost:8000")
 
 
-def _mock_response(status_code: int = 200, json_data: dict[str, object] | None = None, text: str = "") -> httpx.Response:
+def _mock_response(
+    status_code: int = 200, json_data: dict[str, object] | None = None, text: str = ""
+) -> httpx.Response:
     """Build a fake httpx.Response."""
     import json as json_mod
 

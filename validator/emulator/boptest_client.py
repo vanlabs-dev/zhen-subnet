@@ -87,7 +87,9 @@ class BOPTESTClient:
         payload: dict[str, Any] = data["payload"]
         return payload
 
-    async def get_results(self, testid: str, point_names: list[str], start_time: float, final_time: float) -> dict[str, Any]:
+    async def get_results(
+        self, testid: str, point_names: list[str], start_time: float, final_time: float
+    ) -> dict[str, Any]:
         """Retrieve simulation results for a time period.
 
         Endpoint: PUT /results/{testid}
