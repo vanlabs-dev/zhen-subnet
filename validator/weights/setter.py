@@ -1,7 +1,7 @@
 """Bittensor set_weights integration.
 
 Sets normalized EMA scores as weights on-chain via the Bittensor SDK,
-with wait_for_inclusion confirmation.
+with wait_for_inclusion confirmation. Uses SDK v10 ExtrinsicResponse.
 """
 
 from __future__ import annotations
@@ -36,6 +36,8 @@ class WeightSetter:
     async def set_weights(self, scores: dict[int, float]) -> bool:
         """Set weights on-chain from normalized scores.
 
+        Uses SDK v10 pattern: returns ExtrinsicResponse with .success attribute.
+
         Args:
             scores: Mapping of miner UID to normalized weight (should sum to 1.0).
 
@@ -50,15 +52,30 @@ class WeightSetter:
         weights = [scores[uid] for uid in uids]
 
         try:
-            self.subtensor.set_weights(
+            logger.info(f"Setting weights for {len(uids)} miners on netuid {self.netuid}")
+            response = self.subtensor.set_weights(
                 wallet=self.wallet,
                 netuid=self.netuid,
                 uids=uids,
                 weights=weights,
                 wait_for_inclusion=True,
+                wait_for_finalization=True,
             )
-            logger.info(f"Weights set for {len(uids)} miners on netuid {self.netuid}")
-            return True
+
+            # SDK v10: ExtrinsicResponse with .success attribute
+            if hasattr(response, "success"):
+                if response.success:
+                    block_hash = getattr(response, "block_hash", "unknown")
+                    logger.info(f"Weights set successfully (block: {block_hash})")
+                    return True
+                else:
+                    error = getattr(response, "error_message", "unknown error")
+                    logger.error(f"Weight setting failed: {error}")
+                    return False
+
+            # Fallback for older SDK versions
+            return bool(response)
+
         except Exception as e:
             logger.error(f"Failed to set weights: {e}")
             return False

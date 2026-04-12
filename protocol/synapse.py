@@ -39,6 +39,16 @@ if _HAS_BITTENSOR:
         training_cvrmse: float | None = None
         metadata: dict[str, object] | None = None
 
+        def required_hash_fields(self) -> list[str]:
+            """Fields used to verify synapse integrity."""
+            return [
+                "test_case_id",
+                "round_id",
+                "simulation_budget",
+                "train_start_hour",
+                "train_end_hour",
+            ]
+
 else:
     # Bittensor not available (e.g. Windows dev environment)
     # Provide a lightweight stub for import compatibility
