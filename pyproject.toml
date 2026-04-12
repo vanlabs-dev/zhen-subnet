@@ -20,7 +20,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-bittensor = ["bittensor", "bittensor-cli"]
+bittensor = ["bittensor", "bittensor-cli", "docker"]
 
 [dependency-groups]
 dev = [
