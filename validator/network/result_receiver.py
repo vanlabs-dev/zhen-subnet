@@ -4,7 +4,6 @@ Extracts calibrated parameters and metadata from dendrite responses,
 filtering out failed or empty submissions.
 """
 
-
 import logging
 from typing import Any
 

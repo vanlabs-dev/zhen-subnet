@@ -26,8 +26,8 @@ class VerifiedResult:
     r_squared: float = 0.0
     simulations_used: int = 0
     calibrated_params: dict[str, float] = field(default_factory=dict)
-    reason: str | None = None
-    detail: str | None = None
+    reason: str = ""
+    detail: str = ""
 
 
 class ScoringEngine:
@@ -93,3 +93,38 @@ class ScoringEngine:
         if n > 0:
             return {uid: 1.0 / n for uid in scores}
         return {}
+
+    def compute_raw(self, verified: dict[int, VerifiedResult], sim_budget: int = 1000) -> dict[int, float]:
+        """Compute raw (unnormalized) composite scores.
+
+        Same formula as compute() but without the final normalization step.
+        Useful for breakdowns and debugging.
+
+        Args:
+            verified: Mapping of miner UID to their VerifiedResult.
+            sim_budget: Maximum simulation budget for convergence scoring.
+
+        Returns:
+            Mapping of miner UID to raw composite score.
+        """
+        scores: dict[int, float] = {}
+
+        for uid, v in verified.items():
+            if v.reason:
+                scores[uid] = 0.0
+                continue
+
+            cvrmse_norm = safe_clamp(1.0 - (v.cvrmse / self.CVRMSE_THRESHOLD))
+            nmbe_norm = safe_clamp(1.0 - (abs(v.nmbe) / self.NMBE_THRESHOLD))
+            r2_norm = safe_clamp(v.r_squared)
+            conv_norm = safe_clamp(1.0 - (v.simulations_used / sim_budget)) if sim_budget > 0 else 0.0
+
+            composite = (
+                self.WEIGHTS["cvrmse"] * cvrmse_norm
+                + self.WEIGHTS["nmbe"] * nmbe_norm
+                + self.WEIGHTS["r_squared"] * r2_norm
+                + self.WEIGHTS["convergence"] * conv_norm
+            )
+            scores[uid] = composite
+
+        return scores

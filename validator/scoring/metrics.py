@@ -1,5 +1,8 @@
-"""ASHRAE-standard metric implementations: CVRMSE, NMBE, and R-squared.
+"""ASHRAE-standard metric implementations.
 
-All computations use float64 arrays. Handles edge cases including zero
-mean measurements, empty arrays, and non-finite values.
+Re-exports from the shared scoring.metrics module.
 """
+
+from scoring.metrics import compute_cvrmse, compute_nmbe, compute_r_squared
+
+__all__ = ["compute_cvrmse", "compute_nmbe", "compute_r_squared"]

@@ -4,7 +4,6 @@ Validates incoming synapses, checks manifest version compatibility,
 and dispatches challenges to the calibration engine.
 """
 
-
 import logging
 from typing import Any
 

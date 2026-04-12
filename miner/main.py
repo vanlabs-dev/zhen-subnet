@@ -68,7 +68,7 @@ class ZhenMiner:
         self.n_calls = n_calls
 
         # Calibration engine
-        self.calibration_engine = CalibrationEngine(algorithm=algorithm)
+        self.calibration_engine = CalibrationEngine(algorithm=algorithm, n_calls=n_calls)
         self.handler = CalibrationHandler(self.calibration_engine)
 
         # Bittensor components

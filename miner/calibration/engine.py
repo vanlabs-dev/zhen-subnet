@@ -17,13 +17,15 @@ from miner.calibration.bayesian import BayesianCalibrator
 class CalibrationEngine:
     """Dispatches calibration challenges to the selected algorithm."""
 
-    def __init__(self, algorithm: str = "bayesian") -> None:
+    def __init__(self, algorithm: str = "bayesian", n_calls: int = 500) -> None:
         """Initialize the calibration engine.
 
         Args:
             algorithm: Algorithm to use. Currently only "bayesian" is supported.
+            n_calls: Number of optimization iterations for Bayesian calibrator.
         """
         self.algorithm = algorithm
+        self.n_calls = n_calls
 
     async def calibrate(self, challenge: dict[str, Any]) -> CalibrationOutput:
         """Run calibration for a given challenge.
@@ -51,7 +53,7 @@ class CalibrationEngine:
         scoring_outputs = self._get_scoring_outputs(test_case_id)
 
         if self.algorithm == "bayesian":
-            calibrator = BayesianCalibrator()
+            calibrator = BayesianCalibrator(n_calls=self.n_calls)
             return calibrator.calibrate(
                 test_case_id=test_case_id,
                 training_data=training_data,
