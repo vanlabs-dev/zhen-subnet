@@ -2843,6 +2843,7 @@ dependencies = [
 bittensor = [
     { name = "bittensor" },
     { name = "bittensor-cli" },
+    { name = "docker" },
 ]
 
 [package.dev-dependencies]
@@ -2859,6 +2860,7 @@ requires-dist = [
     { name = "bittensor", marker = "extra == 'bittensor'" },
     { name = "bittensor-cli", marker = "extra == 'bittensor'" },
     { name = "docker" },
+    { name = "docker", marker = "extra == 'bittensor'" },
     { name = "httpx" },
     { name = "numpy" },
     { name = "scipy" },
