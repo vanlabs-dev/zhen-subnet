@@ -420,6 +420,12 @@ WSL2 Ubuntu (bittensor operations):
 13. Emissions based on net TAO flow, not alpha price
 14. Owner take fixed at 18%
 15. btcli faucet is DISABLED
+16. `from __future__ import annotations` breaks bt.Synapse subclasses. Pydantic needs real type objects at class definition time. Never use it in files that define Synapse subclasses.
+17. `from __future__ import annotations` also breaks axon.attach(). The SDK inspects forward_fn type annotations with issubclass() at runtime. Deferred string annotations cause "issubclass() arg 1 must be a class" errors. Remove it from any file containing functions passed to axon.attach().
+18. Axon blacklist/priority functions must use `typing.Tuple[bool, str]` not `tuple[bool, str]` for return annotations. The SDK compares signatures using typing.Tuple internally.
+19. Axon blacklist/priority must be standalone module-level functions, not bound methods or nested functions. The SDK inspects signatures and nested/bound functions don't match expected patterns.
+20. `required_hash_fields` on a Synapse subclass must be a class attribute (list), not a method or property. The SDK iterates it directly. Suppress the Pydantic shadow warning with warnings.filterwarnings.
+21. HOME directory on WSL2 may default to `/` instead of `/root`. Verify with `echo $HOME`. Fix in /etc/passwd or .bashrc. Wallets, test cases, and configs all use `~/.bittensor/` and `~/.zhen/` which resolve relative to HOME.
 
 ---
 

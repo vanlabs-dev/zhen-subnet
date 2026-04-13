@@ -11,9 +11,15 @@ not deferred string annotations.
 """
 
 import importlib.util
+import warnings
 from typing import Optional
 
 _HAS_BITTENSOR = importlib.util.find_spec("bittensor") is not None
+
+warnings.filterwarnings(
+    "ignore",
+    message="Field name.*required_hash_fields.*shadows an attribute in parent.*Synapse",
+)
 
 if _HAS_BITTENSOR:
     import bittensor as bt
