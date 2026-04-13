@@ -20,6 +20,7 @@ The architecture is domain-agnostic. Any domain with a complex simulation and a 
 - Climate: Brussels, Belgium (BESTEST reference buildings)
 
 ## Documentation
-- Mining Guide: docs/MINE.md (coming soon)
-- Scoring Formula: docs/SCORING.md (coming soon)
-- Validator Setup: docs/VALIDATE.md (coming soon)
+- Mining Guide: docs/MINE.md
+- Scoring Formula: docs/SCORING.md
+- Validator Setup: docs/VALIDATE.md
+- Subnet Rules: docs/RULES.md
