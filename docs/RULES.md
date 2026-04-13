@@ -56,7 +56,7 @@ Single-round manipulation is dampened by exponential moving average tracking (al
 
 ## Immunity Period
 
-- New miners receive an immunity period after registration (configurable by subnet owner, default ~48 hours on Zhen)
+- New miners receive an immunity period after registration (configurable by subnet owner, currently ~16.7 hours on Zhen (5000 blocks at 12 seconds per block))
 - During immunity, your neuron cannot be deregistered by lower-performing newcomers
 - Use this time to verify your miner is receiving and responding to challenges correctly
 

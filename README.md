@@ -40,7 +40,12 @@ Zhen is a domain-agnostic calibration platform for digital twins. The first vert
 - BOPTEST emulator integration
 - ASHRAE-standard accuracy metrics
 
-Testnet live on Bittensor subnet 456. 78 tests passing.
+Testnet live on Bittensor subnet 456. 82 tests passing.
+
+**Testnet:**
+- Subnet 456 live on Bittensor testnet
+- First successful calibration round completed (CVRMSE 0.0399)
+- Weights set on-chain via Yuma Consensus
 
 ## Documentation
 
@@ -50,9 +55,10 @@ Testnet live on Bittensor subnet 456. 78 tests passing.
 
 ## Quick Links
 
-- Mining guide: coming soon (docs/MINE.md)
-- Scoring formula: coming soon (docs/SCORING.md)
-- Validator setup: coming soon (docs/VALIDATE.md)
+- [Mining guide](docs/MINE.md)
+- [Scoring formula](docs/SCORING.md)
+- [Validator setup](docs/VALIDATE.md)
+- [Subnet rules](docs/RULES.md)
 
 ## Development
 

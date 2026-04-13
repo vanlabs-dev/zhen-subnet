@@ -12,7 +12,7 @@ Miners receive calibration challenges from validators containing training data f
 - Minimum: 4 cores, 8GB RAM
 - The bottleneck is simulation evaluations (RC network thermal model), which are CPU-bound
 - Each calibration round runs `n_calls` optimization iterations (default 100)
-- A round takes approximately 5 to 10 minutes with `n_calls=100`
+- A round takes approximately 30 to 60 seconds with `n_calls=100`
 
 ### Software
 
