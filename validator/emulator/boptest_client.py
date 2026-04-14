@@ -45,7 +45,7 @@ class BOPTESTClient:
         """
         resp = await self.client.post(
             f"{self.url}/testcases/{testcase_id}/select",
-            timeout=300.0,
+            timeout=600.0,
         )
         self._check_response(resp, "select_testcase")
         data = resp.json()
