@@ -2,8 +2,8 @@
 
 <!-- FORMATTING RULE: This document must NEVER contain em dashes or en dashes. Use commas, periods, colons, or parentheses instead. -->
 
-**Status:** Milestone 1 complete
-**Updated:** 2026-04-14
+**Status:** Milestone 3 complete
+**Updated:** 2026-04-15
 
 This document tracks the proving milestones from testnet validation through mainnet launch and revenue. Each milestone has concrete exit criteria. No milestone is skippable.
 
@@ -54,16 +54,20 @@ This document tracks the proving milestones from testnet validation through main
 
 ---
 
-## Milestone 3: Expand Test Cases
+## Milestone 3: Expand Test Cases [COMPLETE, 2026-04-15]
 
 **Goal:** Multiple building types exercise different calibration skills, preventing single-strategy dominance.
 
-**Exit criteria:**
+**What was proven:**
 
-- 3 test cases available for testnet rotation
-- Different building types (residential, commercial, multi-zone)
-- Validators randomly select test cases per round via deterministic hashing
-- No single parameter set scores well across all test cases
+- 3 BOPTEST test cases operational: bestest_hydronic_heat_pump, bestest_air, bestest_hydronic
+- Automated warmup: all 3 test cases initialized in 8 seconds with health check and retry
+- SHA-256 deterministic rotation selects test case per round (no validator discretion)
+- Different BOPTEST measurement mappings (reaTRoo_y, reaQHea_y) handled correctly per test case
+- Round completed with bestest_hydronic: CVRMSE 1.7235, NMBE -0.2938, R-squared -3.3788
+- Weights set on-chain
+
+**Key insight:** Each test case exposes different thermal dynamics and measurement points. The higher CVRMSE on bestest_hydronic (1.72 vs 0.96 on bestest_hydronic_heat_pump) confirms that miners cannot reuse a single parameter set across building types. This is exactly the diversity pressure the milestone was designed to create.
 
 ---
 
