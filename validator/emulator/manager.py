@@ -8,12 +8,21 @@ ground truth in calibration rounds.
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from validator.emulator.boptest_client import BOPTESTClient
 
 logger = logging.getLogger(__name__)
 
 SECONDS_PER_HOUR = 3600
+
+# Supported unit conversions from BOPTEST native units to Zhen scoring units.
+# Each converter takes (raw_values, step_seconds) and returns converted values.
+UNIT_CONVERTERS: dict[str, Any] = {
+    "kelvin_to_celsius": lambda values, _step_s: [v - 273.15 for v in values],
+    "watts_to_kwh": lambda values, step_s: [v * (step_s / 3600.0) / 1000.0 for v in values],
+    "none": lambda values, _step_s: values,
+}
 
 
 class BOPTESTManager:
@@ -38,15 +47,15 @@ class BOPTESTManager:
         start_hour: int,
         end_hour: int,
         scoring_outputs: list[str],
-        output_mapping: dict[str, str],
+        output_mapping: dict[str, dict[str, str]],
         step_seconds: int = 3600,
         warmup_hours: int = 24,
     ) -> dict[str, list[float]]:
         """Run a BOPTEST simulation and collect scoring output time-series.
 
         Selects a test case, initializes to the start time, advances
-        through the simulation period, and retrieves results for the
-        requested output variables.
+        through the simulation period, retrieves results, and applies
+        unit conversions so outputs match the RC model format.
 
         Args:
             testcase_id: BOPTEST test case identifier
@@ -55,8 +64,9 @@ class BOPTESTManager:
             end_hour: Last hour of the simulation window (exclusive).
             scoring_outputs: List of Zhen scoring output names
                 (e.g. ["zone_air_temperature_C", "total_heating_energy_kWh"]).
-            output_mapping: Maps Zhen scoring output names to BOPTEST
-                variable names (e.g. {"zone_air_temperature_C": "reaTZon_y"}).
+            output_mapping: Maps Zhen scoring output names to dicts with
+                "boptest_var" (BOPTEST variable name) and "unit_conversion"
+                (conversion function key from UNIT_CONVERTERS).
             step_seconds: Simulation communication step size in seconds.
                 Defaults to 3600 (1 hour).
             warmup_hours: Warmup period in hours before the start of the
@@ -64,21 +74,32 @@ class BOPTESTManager:
 
         Returns:
             Dict mapping Zhen scoring output names to lists of float values,
-            one value per timestep. Same format as RCNetworkBackend output.
+            one value per timestep. Units match the RC model output format
+            (Celsius for temperature, kWh for energy).
 
         Raises:
             BOPTESTError: If any BOPTEST API call fails.
             KeyError: If a scoring output has no entry in output_mapping.
+            ValueError: If an unknown unit_conversion is specified.
         """
-        # Resolve BOPTEST variable names for requested outputs
-        boptest_vars = []
+        # Resolve BOPTEST variable names and conversions for requested outputs
+        boptest_vars: list[str] = []
+        conversions: list[str] = []
         for name in scoring_outputs:
             if name not in output_mapping:
                 raise KeyError(
                     f"Scoring output '{name}' has no BOPTEST variable mapping. "
                     f"Add it to boptest_output_mapping in config.json."
                 )
-            boptest_vars.append(output_mapping[name])
+            entry = output_mapping[name]
+            boptest_vars.append(entry["boptest_var"])
+            conversion = entry.get("unit_conversion", "none")
+            if conversion not in UNIT_CONVERTERS:
+                raise ValueError(
+                    f"Unknown unit_conversion '{conversion}' for output '{name}'. "
+                    f"Supported: {list(UNIT_CONVERTERS.keys())}"
+                )
+            conversions.append(conversion)
 
         # Convert hours to seconds (BOPTEST uses seconds from start of year)
         start_time_s = float(start_hour * SECONDS_PER_HOUR)
@@ -112,13 +133,13 @@ class BOPTESTManager:
             logger.info(f"BOPTEST simulation complete: {n_steps} steps advanced")
 
             # 5. Retrieve results for all requested variables
-            results = await self.client.get_results(
-                testid, boptest_vars, start_time_s, end_time_s
-            )
+            results = await self.client.get_results(testid, boptest_vars, start_time_s, end_time_s)
 
-            # 6. Map BOPTEST variable names back to Zhen scoring output names
+            # 6. Map BOPTEST variables back to Zhen names and apply unit conversions
             output: dict[str, list[float]] = {}
-            for zhen_name, boptest_name in zip(scoring_outputs, boptest_vars, strict=True):
+            for zhen_name, boptest_name, conversion in zip(
+                scoring_outputs, boptest_vars, conversions, strict=True
+            ):
                 if boptest_name not in results:
                     logger.warning(
                         f"BOPTEST variable '{boptest_name}' not in results. "
@@ -126,8 +147,14 @@ class BOPTESTManager:
                     )
                     output[zhen_name] = []
                 else:
-                    raw_values = results[boptest_name]
-                    output[zhen_name] = [float(v) for v in raw_values]
+                    raw_values = [float(v) for v in results[boptest_name]]
+                    converter = UNIT_CONVERTERS[conversion]
+                    converted = converter(raw_values, step_seconds)
+                    output[zhen_name] = [float(v) for v in converted]
+                    logger.info(
+                        f"  {zhen_name}: {len(converted)} values, "
+                        f"conversion={conversion}"
+                    )
 
             return output
 

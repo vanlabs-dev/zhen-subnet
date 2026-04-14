@@ -175,15 +175,11 @@ class RoundOrchestrator:
             ValueError: If no boptest_url is configured.
         """
         if self.boptest_url is None:
-            raise ValueError(
-                "BOPTEST URL not configured. Pass --boptest-url or use local mode."
-            )
+            raise ValueError("BOPTEST URL not configured. Pass --boptest-url or use local mode.")
 
         config = self._load_test_case_config(test_case["id"])
-        scoring_outputs = test_case.get(
-            "scoring_outputs", config.get("scoring_outputs", [])
-        )
-        output_mapping: dict[str, str] = config.get("boptest_output_mapping", {})
+        scoring_outputs = test_case.get("scoring_outputs", config.get("scoring_outputs", []))
+        output_mapping: dict[str, dict[str, str]] = config.get("boptest_output_mapping", {})
 
         if not output_mapping:
             raise ValueError(
@@ -192,10 +188,7 @@ class RoundOrchestrator:
             )
 
         manager = BOPTESTManager(self.boptest_url)
-        logger.info(
-            f"Generating BOPTEST ground truth for {test_case['id']} "
-            f"(hours {period[0]}-{period[1]})"
-        )
+        logger.info(f"Generating BOPTEST ground truth for {test_case['id']} (hours {period[0]}-{period[1]})")
 
         return await manager.run_simulation(
             testcase_id=test_case["id"],
