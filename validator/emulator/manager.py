@@ -245,8 +245,7 @@ class BOPTESTManager:
             ):
                 if boptest_name not in results:
                     logger.warning(
-                        f"BOPTEST variable '{boptest_name}' not in results. "
-                        f"Available: {list(results.keys())}"
+                        f"BOPTEST variable '{boptest_name}' not in results. Available: {list(results.keys())}"
                     )
                     output[zhen_name] = [0.0] * n_hours
                     continue
@@ -257,15 +256,22 @@ class BOPTESTManager:
                 converter = UNIT_CONVERTERS[conversion]
                 converted = converter(raw_values, timestamps)
 
-                # watts_to_kwh drops the first element (needs two points per interval),
-                # so align timestamps accordingly
-                resample_ts = timestamps[1:] if conversion == "watts_to_kwh" else timestamps
+                # watts_to_kwh produces N-1 values from N inputs (each value
+                # is energy over the interval ending at timestamps[i]).
+                # Trim timestamps to match: use the trailing N-1 timestamps.
+                n_converted = len(converted)
+                resample_ts = timestamps[-n_converted:] if n_converted < len(timestamps) else timestamps
+
+                logger.info(
+                    f"  {zhen_name}: {len(raw_values)} raw -> {n_converted} converted, "
+                    f"{len(resample_ts)} timestamps after conversion"
+                )
 
                 # Resample to hourly resolution
                 hourly = _resample_to_hourly(converted, resample_ts, start_hour, n_hours, resample)
                 output[zhen_name] = hourly
                 logger.info(
-                    f"  {zhen_name}: {len(raw_values)} raw -> {len(hourly)} hourly "
+                    f"  {zhen_name}: {n_converted} converted -> {len(hourly)} hourly "
                     f"(conversion={conversion}, resample={resample})"
                 )
 
