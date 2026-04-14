@@ -18,35 +18,29 @@ logger = logging.getLogger(__name__)
 SECONDS_PER_HOUR = 3600
 
 
-def _kelvin_to_celsius(values: list[float], _timestamps: list[float]) -> list[float]:
+def _kelvin_to_celsius(values: list[float], _internal_step_s: float) -> list[float]:
     """Convert Kelvin to Celsius."""
     return [v - 273.15 for v in values]
 
 
-def _watts_to_kwh(values: list[float], timestamps: list[float]) -> list[float]:
-    """Convert instantaneous Watts to energy in kWh per interval.
+def _watts_to_kwh(values: list[float], internal_step_s: float) -> list[float]:
+    """Convert instantaneous Watts to energy in kWh per sample interval.
 
-    Uses actual timestamp deltas to compute energy for each interval,
-    so the conversion is correct regardless of BOPTEST reporting resolution.
+    Each sample represents power sustained over internal_step_s seconds.
+    Energy per sample = watts * (internal_step_s / 3600) / 1000.
     """
-    if len(values) < 2:
-        return values
-    result: list[float] = []
-    for i in range(1, len(values)):
-        dt_s = timestamps[i] - timestamps[i - 1]
-        dt_h = dt_s / 3600.0
-        kwh = values[i] * dt_h / 1000.0
-        result.append(kwh)
-    return result
+    factor = internal_step_s / 3600.0 / 1000.0
+    return [v * factor for v in values]
 
 
-def _identity(values: list[float], _timestamps: list[float]) -> list[float]:
+def _identity(values: list[float], _internal_step_s: float) -> list[float]:
     """No-op conversion."""
     return values
 
 
 # Supported unit conversions from BOPTEST native units to Zhen scoring units.
-# Each converter takes (raw_values, timestamps_seconds) and returns converted values.
+# Each converter takes (raw_values, internal_step_seconds) and returns
+# converted values of the same length.
 UNIT_CONVERTERS: dict[str, Any] = {
     "kelvin_to_celsius": _kelvin_to_celsius,
     "watts_to_kwh": _watts_to_kwh,
@@ -62,52 +56,55 @@ RESAMPLE_METHODS: dict[str, Any] = {
 
 def _resample_to_hourly(
     values: list[float],
-    timestamps: list[float],
-    start_hour: int,
     n_hours: int,
     method: str,
 ) -> list[float]:
-    """Resample sub-hourly data into hourly buckets.
+    """Resample sub-hourly data into hourly values by chunking.
 
-    Groups values by the hour they fall into (based on timestamps in
-    seconds from start of year) and applies the aggregation method.
+    Divides the values array into n_hours equal chunks and applies
+    the aggregation method to each chunk. No timestamps needed.
 
     Args:
-        values: Data values (already unit-converted).
-        timestamps: Corresponding timestamps in seconds from start of year.
-            For watts_to_kwh the conversion drops the first timestamp, so
-            timestamps here should match the length of values.
-        start_hour: First hour of the window (inclusive).
+        values: Data values (already unit-converted), evenly distributed
+            across the time window.
         n_hours: Expected number of hourly output values.
         method: Aggregation method ("mean" or "sum").
 
     Returns:
         List of exactly n_hours float values.
+
+    Raises:
+        ValueError: If method is unknown or values cannot be evenly chunked.
     """
     if method not in RESAMPLE_METHODS:
-        raise ValueError(f"Unknown resample_method '{method}'. Supported: {list(RESAMPLE_METHODS.keys())}")
+        raise ValueError(
+            f"Unknown resample_method '{method}'. "
+            f"Supported: {list(RESAMPLE_METHODS.keys())}"
+        )
+
+    n_values = len(values)
+    if n_values == 0 or n_hours == 0:
+        return [0.0] * n_hours
 
     aggregator = RESAMPLE_METHODS[method]
+    values_per_hour = n_values // n_hours
+    remainder = n_values % n_hours
 
-    # Pre-allocate buckets for each hour
-    buckets: list[list[float]] = [[] for _ in range(n_hours)]
-
-    start_s = float(start_hour * SECONDS_PER_HOUR)
-    for val, ts in zip(values, timestamps, strict=True):
-        hour_idx = int((ts - start_s) / SECONDS_PER_HOUR)
-        # Clamp to valid range (timestamps at exact boundaries)
-        if hour_idx >= n_hours:
-            hour_idx = n_hours - 1
-        if hour_idx < 0:
-            hour_idx = 0
-        buckets[hour_idx].append(val)
+    if remainder != 0:
+        logger.warning(
+            f"Resample: {n_values} values not evenly divisible by {n_hours} hours "
+            f"(remainder={remainder}). Truncating last {remainder} samples."
+        )
 
     result: list[float] = []
-    for i, bucket in enumerate(buckets):
-        if bucket:
-            result.append(float(aggregator(bucket)))
+    for hour_idx in range(n_hours):
+        start = hour_idx * values_per_hour
+        end = start + values_per_hour
+        chunk = values[start:end]
+        if chunk:
+            result.append(float(aggregator(chunk)))
         else:
-            logger.warning(f"Resample hour {start_hour + i}: empty bucket, using 0.0")
+            logger.warning(f"Resample hour {hour_idx}: empty chunk, using 0.0")
             result.append(0.0)
 
     return result
@@ -203,8 +200,8 @@ class BOPTESTManager:
         start_time_s = float(start_hour * SECONDS_PER_HOUR)
         end_time_s = float(end_hour * SECONDS_PER_HOUR)
         warmup_s = float(warmup_hours * SECONDS_PER_HOUR)
+        total_seconds = float(n_hours := end_hour - start_hour) * SECONDS_PER_HOUR
 
-        n_hours = end_hour - start_hour
         logger.info(
             f"BOPTEST simulation: testcase={testcase_id}, "
             f"hours={start_hour}-{end_hour} ({n_hours} hours), "
@@ -227,20 +224,26 @@ class BOPTESTManager:
             for step_idx in range(n_advance_steps):
                 await self.client.advance(testid)
                 if (step_idx + 1) % 100 == 0:
-                    logger.info(f"BOPTEST advance: step {step_idx + 1}/{n_advance_steps}")
+                    logger.info(
+                        f"BOPTEST advance: step {step_idx + 1}/{n_advance_steps}"
+                    )
 
-            logger.info(f"BOPTEST simulation complete: {n_advance_steps} steps advanced")
+            logger.info(
+                f"BOPTEST simulation complete: {n_advance_steps} steps advanced"
+            )
 
-            # 5-6. Fetch each variable individually with its own timestamps,
-            # apply unit conversion, and resample to hourly.
-            # BOPTEST variables can have different reporting frequencies,
-            # so requesting them together gives mismatched array lengths.
+            # 5-6. Fetch each variable (without "time"), apply unit conversion,
+            # and resample to hourly by chunking.
             output: dict[str, list[float]] = {}
             for zhen_name, boptest_name, conversion, resample in zip(
-                scoring_outputs, boptest_vars, conversions, resample_methods, strict=True
+                scoring_outputs,
+                boptest_vars,
+                conversions,
+                resample_methods,
+                strict=True,
             ):
                 var_results = await self.client.get_results(
-                    testid, ["time", boptest_name], start_time_s, end_time_s
+                    testid, [boptest_name], start_time_s, end_time_s
                 )
 
                 if boptest_name not in var_results:
@@ -252,37 +255,33 @@ class BOPTESTManager:
                     continue
 
                 raw_values = [float(v) for v in var_results[boptest_name]]
-                timestamps = [float(t) for t in var_results["time"]]
-                assert len(raw_values) == len(timestamps), (
-                    f"Mismatch: {len(raw_values)} values vs {len(timestamps)} "
-                    f"timestamps for {boptest_name}"
+                n_samples = len(raw_values)
+                logger.info(
+                    f"  {zhen_name} ({boptest_name}): {n_samples} raw samples"
                 )
-                logger.info(f"  {zhen_name} ({boptest_name}): {len(raw_values)} raw datapoints")
 
-                # Apply unit conversion (uses timestamps for interval-aware conversions)
+                # Compute the internal reporting step from array length
+                internal_step_s = total_seconds / n_samples if n_samples > 0 else 0.0
+
+                # Apply unit conversion
                 converter = UNIT_CONVERTERS[conversion]
-                converted = converter(raw_values, timestamps)
-
-                # watts_to_kwh produces N-1 values from N inputs (each value
-                # is energy over the interval ending at timestamps[i]).
-                # Trim timestamps to match: use the trailing entries.
-                n_converted = len(converted)
-                resample_ts = timestamps[-n_converted:] if n_converted < len(timestamps) else timestamps
-                assert len(converted) == len(resample_ts), (
-                    f"Mismatch: {len(converted)} values vs {len(resample_ts)} "
-                    f"timestamps for {boptest_name} after conversion"
+                converted = converter(raw_values, internal_step_s)
+                assert len(converted) == n_samples, (
+                    f"Unit converter changed array length: "
+                    f"{n_samples} -> {len(converted)} for {boptest_name}"
                 )
 
                 logger.info(
-                    f"  {zhen_name}: {len(raw_values)} raw -> {n_converted} converted, "
-                    f"{len(resample_ts)} timestamps after {conversion}"
+                    f"  {zhen_name}: {n_samples} samples, "
+                    f"internal_step={internal_step_s:.1f}s, "
+                    f"conversion={conversion}"
                 )
 
-                # Resample to hourly resolution
-                hourly = _resample_to_hourly(converted, resample_ts, start_hour, n_hours, resample)
+                # Resample to hourly by chunking
+                hourly = _resample_to_hourly(converted, n_hours, resample)
                 output[zhen_name] = hourly
                 logger.info(
-                    f"  {zhen_name}: {n_converted} converted -> {len(hourly)} hourly "
+                    f"  {zhen_name}: {n_samples} -> {len(hourly)} hourly "
                     f"(resample={resample})"
                 )
 
@@ -294,4 +293,6 @@ class BOPTESTManager:
                 await self.client.stop(testid)
                 logger.info(f"BOPTEST testid {testid} stopped")
             except Exception as e:
-                logger.warning(f"Failed to stop BOPTEST testid {testid}: {e}")
+                logger.warning(
+                    f"Failed to stop BOPTEST testid {testid}: {e}"
+                )
