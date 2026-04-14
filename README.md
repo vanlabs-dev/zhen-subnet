@@ -1,15 +1,6 @@
 <div align="center">
 
-<br>
-
-```
-███████╗██╗  ██╗███████╗███╗   ██╗
-╚══███╔╝██║  ██║██╔════╝████╗  ██║
-  ███╔╝ ███████║█████╗  ██╔██╗ ██║
- ███╔╝  ██╔══██║██╔══╝  ██║╚██╗██║
-███████╗██║  ██║███████╗██║ ╚████║
-╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝
-```
+<img src="assets/logo.png" alt="Zhen" width="400">
 
 **The calibration layer for digital twins on Bittensor**
 
@@ -17,7 +8,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Status: Active Development](https://img.shields.io/badge/status-active--development-blue.svg)]()
+[![Status: Testnet](https://img.shields.io/badge/status-testnet-blue.svg)]()
 
 ---
 
@@ -42,7 +33,7 @@ Zhen is a domain-agnostic calibration platform for digital twins. The first vert
 - BOPTEST emulator integration
 - ASHRAE-standard accuracy metrics
 
-Testnet live on Bittensor subnet 456. 82 tests passing.
+Testnet live on Bittensor subnet 456. 77 tests passing.
 
 **Testnet:**
 - Subnet 456 live on Bittensor testnet
