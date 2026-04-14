@@ -227,9 +227,7 @@ class BOPTESTManager:
                 for step_idx in range(n_advance_steps):
                     await self.client.advance(testid)
                     if (step_idx + 1) % 100 == 0:
-                        logger.info(
-                            f"BOPTEST advance: step {step_idx + 1}/{n_advance_steps}"
-                        )
+                        logger.info(f"BOPTEST advance: step {step_idx + 1}/{n_advance_steps}")
             finally:
                 httpx_logger.setLevel(httpx_level)
 

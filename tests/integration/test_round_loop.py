@@ -12,7 +12,7 @@ import pytest
 
 from validator.round.orchestrator import RoundOrchestrator
 
-MANIFEST_PATH = Path(__file__).resolve().parents[2] / "registry" / "manifest.json"
+MANIFEST_PATH = Path(__file__).resolve().parent / "fixtures" / "single_case_manifest.json"
 
 DEFAULT_PARAMS = {
     "wall_r_value": 3.5,

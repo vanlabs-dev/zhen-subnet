@@ -16,7 +16,7 @@ from simulation.rc_network import RCNetworkBackend
 from validator.round.orchestrator import RoundOrchestrator
 
 TEST_CASE_ID = "bestest_hydronic_heat_pump"
-MANIFEST_PATH = Path(__file__).resolve().parents[2] / "registry" / "manifest.json"
+MANIFEST_PATH = Path(__file__).resolve().parent / "fixtures" / "single_case_manifest.json"
 PARAM_NAMES = [
     "wall_r_value",
     "roof_r_value",

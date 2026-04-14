@@ -1,0 +1,16 @@
+{
+  "version": "v1.1.0",
+  "test_cases": [
+    {
+      "id": "bestest_hydronic_heat_pump",
+      "simplified_model_type": "rc_network",
+      "parameter_count": 6,
+      "difficulty": "easy",
+      "climate": "Brussels, Belgium",
+      "building_type": "residential_single_zone",
+      "hvac_type": "hydronic_heat_pump",
+      "scoring_outputs": ["zone_air_temperature_C", "total_heating_energy_kWh"],
+      "simulation_time_approx_seconds": 0.5
+    }
+  ]
+}
