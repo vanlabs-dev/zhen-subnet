@@ -430,7 +430,7 @@ WSL2 Ubuntu (bittensor operations):
 23. BOPTEST returns measurement data at its internal timestep (~30s, ~120 points/hour), NOT at the configured communication step size. You must resample to hourly resolution after retrieval.
 24. BOPTEST "time" variable returned by get_results has a different array length than measurement variables. Do NOT use timestamps for resampling. Use array chunking instead: `values_per_hour = len(values) // n_hours`.
 25. MinIO credentials in `.env` must match: `AWS_ACCESS_KEY_ID=user`, `AWS_SECRET_ACCESS_KEY=password` (matching `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` in the BOPTEST docker-compose).
-26. BOPTEST web container starts before MinIO bucket exists. May need `docker compose restart web` after first `docker compose up -d`.
+26. BOPTEST web container starts before MinIO bucket exists. May need `docker compose restart web` after first `docker compose up -d`. The validator handles this with a health check loop (polls GET /testcases for up to 10 minutes before warmup). This is an upstream BOPTEST issue, do not try to fix their docker-compose.
 27. `config.json` for test cases must be recopied to `~/.zhen/test_cases/` after any changes to the registry copy.
 
 ---

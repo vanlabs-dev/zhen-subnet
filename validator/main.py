@@ -150,13 +150,53 @@ class ZhenValidator:
 
         return axons, uids
 
+    async def _wait_for_boptest(self) -> bool:
+        """Poll BOPTEST /testcases endpoint until the service is ready.
+
+        Retries every 10 seconds for up to 10 minutes. Handles the
+        MinIO bucket race condition where the web container crashes
+        on first startup and needs a restart.
+
+        Returns:
+            True if the service responded, False if all retries exhausted.
+        """
+        import httpx
+
+        max_retries = 60
+        retry_interval = 10
+        url = f"{self.boptest_url}/testcases"
+
+        logger.info(f"Waiting for BOPTEST service at {self.boptest_url}...")
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(url)
+                if resp.status_code < 400:
+                    data = resp.json()
+                    n_cases = len(data) if isinstance(data, list) else 0
+                    logger.info(f"BOPTEST service ready ({n_cases} test cases available)")
+                    return True
+            except Exception:
+                pass
+
+            if attempt < max_retries:
+                logger.info(f"  BOPTEST not ready (attempt {attempt}/{max_retries}), retrying in {retry_interval}s...")
+                await asyncio.sleep(retry_interval)
+
+        logger.error("BOPTEST service did not respond after 10 minutes. Continuing without warmup.")
+        return False
+
     async def _warmup_boptest(self) -> None:
         """Pre-warm all BOPTEST test cases by selecting and stopping each one.
 
-        First FMU compilation for a new test case takes 1-3 minutes.
-        Running this at startup ensures all rounds are fast.
+        First polls the service until it is ready, then selects and stops
+        each test case to force FMU compilation. Retries each test case
+        once on failure (the worker might be busy finishing a previous compile).
         """
         from validator.emulator.boptest_client import BOPTESTClient
+
+        if not await self._wait_for_boptest():
+            return
 
         client = BOPTESTClient(self.boptest_url)
         test_cases = self.manifest.get("test_cases", [])
@@ -164,15 +204,21 @@ class ZhenValidator:
 
         for tc in test_cases:
             tc_id = tc["id"]
-            start = time.monotonic()
-            try:
-                testid = await client.select_testcase(tc_id)
-                await client.stop(testid)
-                elapsed = time.monotonic() - start
-                logger.info(f"  Warmed {tc_id} in {elapsed:.1f}s")
-            except Exception as e:
-                elapsed = time.monotonic() - start
-                logger.warning(f"  Failed to warm {tc_id} after {elapsed:.1f}s: {e}")
+            for attempt in range(1, 3):
+                start = time.monotonic()
+                try:
+                    testid = await client.select_testcase(tc_id)
+                    await client.stop(testid)
+                    elapsed = time.monotonic() - start
+                    logger.info(f"  Warmed {tc_id} in {elapsed:.1f}s")
+                    break
+                except Exception as e:
+                    elapsed = time.monotonic() - start
+                    if attempt == 1:
+                        logger.warning(f"  {tc_id} failed ({elapsed:.1f}s): {e}. Retrying...")
+                        await asyncio.sleep(5)
+                    else:
+                        logger.warning(f"  {tc_id} failed on retry ({elapsed:.1f}s): {e}. Skipping.")
 
         logger.info("BOPTEST warmup complete")
 
