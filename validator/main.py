@@ -15,6 +15,8 @@ if importlib.util.find_spec("bittensor"):
 else:
     bt = None
 
+import time
+
 from protocol.synapse import CalibrationSynapse
 from validator.network.challenge_sender import ChallengeSender
 from validator.network.result_receiver import ResponseParser
@@ -148,12 +150,39 @@ class ZhenValidator:
 
         return axons, uids
 
+    async def _warmup_boptest(self) -> None:
+        """Pre-warm all BOPTEST test cases by selecting and stopping each one.
+
+        First FMU compilation for a new test case takes 1-3 minutes.
+        Running this at startup ensures all rounds are fast.
+        """
+        from validator.emulator.boptest_client import BOPTESTClient
+
+        client = BOPTESTClient(self.boptest_url)
+        test_cases = self.manifest.get("test_cases", [])
+        logger.info(f"Pre-warming {len(test_cases)} BOPTEST test cases...")
+
+        for tc in test_cases:
+            tc_id = tc["id"]
+            start = time.monotonic()
+            try:
+                testid = await client.select_testcase(tc_id)
+                await client.stop(testid)
+                elapsed = time.monotonic() - start
+                logger.info(f"  Warmed {tc_id} in {elapsed:.1f}s")
+            except Exception as e:
+                elapsed = time.monotonic() - start
+                logger.warning(f"  Failed to warm {tc_id} after {elapsed:.1f}s: {e}")
+
+        logger.info("BOPTEST warmup complete")
+
     async def run(self) -> None:
         """Main loop: run rounds at tempo intervals."""
         logger.info(f"Starting ZhenValidator (netuid={self.netuid}, tempo={self.tempo_seconds}s)")
         logger.info(f"Local mode: {self.local_mode}")
         if not self.local_mode:
             logger.info(f"BOPTEST URL: {self.boptest_url}")
+            await self._warmup_boptest()
         logger.info(f"Manifest version: {self.manifest['version']}")
 
         while True:

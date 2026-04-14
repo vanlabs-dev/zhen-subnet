@@ -27,7 +27,7 @@ class BOPTESTClient:
             api_url: Base URL of the BOPTEST service (e.g. "http://localhost:8000").
         """
         self.url = api_url.rstrip("/")
-        self.client = httpx.AsyncClient(timeout=60.0)
+        self.client = httpx.AsyncClient(timeout=30.0)
 
     async def select_testcase(self, testcase_id: str) -> str:
         """Select a test case and start a running instance.
@@ -43,7 +43,10 @@ class BOPTESTClient:
         Raises:
             BOPTESTError: If the request fails or returns non-200 status.
         """
-        resp = await self.client.post(f"{self.url}/testcases/{testcase_id}/select")
+        resp = await self.client.post(
+            f"{self.url}/testcases/{testcase_id}/select",
+            timeout=300.0,
+        )
         self._check_response(resp, "select_testcase")
         data = resp.json()
         return str(data["testid"])
