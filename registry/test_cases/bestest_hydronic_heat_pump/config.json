@@ -37,11 +37,13 @@
   "boptest_output_mapping": {
     "zone_air_temperature_C": {
       "boptest_var": "reaTZon_y",
-      "unit_conversion": "kelvin_to_celsius"
+      "unit_conversion": "kelvin_to_celsius",
+      "resample_method": "mean"
     },
     "total_heating_energy_kWh": {
       "boptest_var": "reaPHeaPum_y",
-      "unit_conversion": "watts_to_kwh"
+      "unit_conversion": "watts_to_kwh",
+      "resample_method": "sum"
     }
   }
 }
