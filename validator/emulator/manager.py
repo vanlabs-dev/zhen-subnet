@@ -77,10 +77,7 @@ def _resample_to_hourly(
         ValueError: If method is unknown or values cannot be evenly chunked.
     """
     if method not in RESAMPLE_METHODS:
-        raise ValueError(
-            f"Unknown resample_method '{method}'. "
-            f"Supported: {list(RESAMPLE_METHODS.keys())}"
-        )
+        raise ValueError(f"Unknown resample_method '{method}'. Supported: {list(RESAMPLE_METHODS.keys())}")
 
     n_values = len(values)
     if n_values == 0 or n_hours == 0:
@@ -220,17 +217,23 @@ class BOPTESTManager:
             await self.client.initialize(testid, start_time_s, warmup_s)
 
             # 4. Advance through the simulation period
-            n_advance_steps = int((end_time_s - start_time_s) / step_seconds)
-            for step_idx in range(n_advance_steps):
-                await self.client.advance(testid)
-                if (step_idx + 1) % 100 == 0:
-                    logger.info(
-                        f"BOPTEST advance: step {step_idx + 1}/{n_advance_steps}"
-                    )
+            # Suppress httpx request logging during the advance loop to avoid
+            # hundreds of "HTTP Request: POST .../advance" lines per round.
+            httpx_logger = logging.getLogger("httpx")
+            httpx_level = httpx_logger.level
+            httpx_logger.setLevel(logging.WARNING)
+            try:
+                n_advance_steps = int((end_time_s - start_time_s) / step_seconds)
+                for step_idx in range(n_advance_steps):
+                    await self.client.advance(testid)
+                    if (step_idx + 1) % 100 == 0:
+                        logger.info(
+                            f"BOPTEST advance: step {step_idx + 1}/{n_advance_steps}"
+                        )
+            finally:
+                httpx_logger.setLevel(httpx_level)
 
-            logger.info(
-                f"BOPTEST simulation complete: {n_advance_steps} steps advanced"
-            )
+            logger.info(f"BOPTEST simulation complete: {n_advance_steps} steps advanced")
 
             # 5-6. Fetch each variable (without "time"), apply unit conversion,
             # and resample to hourly by chunking.
@@ -242,23 +245,18 @@ class BOPTESTManager:
                 resample_methods,
                 strict=True,
             ):
-                var_results = await self.client.get_results(
-                    testid, [boptest_name], start_time_s, end_time_s
-                )
+                var_results = await self.client.get_results(testid, [boptest_name], start_time_s, end_time_s)
 
                 if boptest_name not in var_results:
                     logger.warning(
-                        f"BOPTEST variable '{boptest_name}' not in results. "
-                        f"Available: {list(var_results.keys())}"
+                        f"BOPTEST variable '{boptest_name}' not in results. Available: {list(var_results.keys())}"
                     )
                     output[zhen_name] = [0.0] * n_hours
                     continue
 
                 raw_values = [float(v) for v in var_results[boptest_name]]
                 n_samples = len(raw_values)
-                logger.info(
-                    f"  {zhen_name} ({boptest_name}): {n_samples} raw samples"
-                )
+                logger.info(f"  {zhen_name} ({boptest_name}): {n_samples} raw samples")
 
                 # Compute the internal reporting step from array length
                 internal_step_s = total_seconds / n_samples if n_samples > 0 else 0.0
@@ -267,23 +265,17 @@ class BOPTESTManager:
                 converter = UNIT_CONVERTERS[conversion]
                 converted = converter(raw_values, internal_step_s)
                 assert len(converted) == n_samples, (
-                    f"Unit converter changed array length: "
-                    f"{n_samples} -> {len(converted)} for {boptest_name}"
+                    f"Unit converter changed array length: {n_samples} -> {len(converted)} for {boptest_name}"
                 )
 
                 logger.info(
-                    f"  {zhen_name}: {n_samples} samples, "
-                    f"internal_step={internal_step_s:.1f}s, "
-                    f"conversion={conversion}"
+                    f"  {zhen_name}: {n_samples} samples, internal_step={internal_step_s:.1f}s, conversion={conversion}"
                 )
 
                 # Resample to hourly by chunking
                 hourly = _resample_to_hourly(converted, n_hours, resample)
                 output[zhen_name] = hourly
-                logger.info(
-                    f"  {zhen_name}: {n_samples} -> {len(hourly)} hourly "
-                    f"(resample={resample})"
-                )
+                logger.info(f"  {zhen_name}: {n_samples} -> {len(hourly)} hourly (resample={resample})")
 
             return output
 
@@ -293,6 +285,4 @@ class BOPTESTManager:
                 await self.client.stop(testid)
                 logger.info(f"BOPTEST testid {testid} stopped")
             except Exception as e:
-                logger.warning(
-                    f"Failed to stop BOPTEST testid {testid}: {e}"
-                )
+                logger.warning(f"Failed to stop BOPTEST testid {testid}: {e}")

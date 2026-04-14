@@ -426,6 +426,12 @@ WSL2 Ubuntu (bittensor operations):
 19. Axon blacklist/priority must be standalone module-level functions, not bound methods or nested functions. The SDK inspects signatures and nested/bound functions don't match expected patterns.
 20. `required_hash_fields` on a Synapse subclass must be a class attribute (list), not a method or property. The SDK iterates it directly. Suppress the Pydantic shadow warning with warnings.filterwarnings.
 21. HOME directory on WSL2 may default to `/` instead of `/root`. Verify with `echo $HOME`. Fix in /etc/passwd or .bashrc. Wallets, test cases, and configs all use `~/.bittensor/` and `~/.zhen/` which resolve relative to HOME.
+22. BOPTEST v0.8+ URL pattern uses `/{endpoint}/{testid}` (e.g., `/results/{testid}`, `/stop/{testid}`), NOT `/{testid}/{endpoint}`.
+23. BOPTEST returns measurement data at its internal timestep (~30s, ~120 points/hour), NOT at the configured communication step size. You must resample to hourly resolution after retrieval.
+24. BOPTEST "time" variable returned by get_results has a different array length than measurement variables. Do NOT use timestamps for resampling. Use array chunking instead: `values_per_hour = len(values) // n_hours`.
+25. MinIO credentials in `.env` must match: `AWS_ACCESS_KEY_ID=user`, `AWS_SECRET_ACCESS_KEY=password` (matching `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` in the BOPTEST docker-compose).
+26. BOPTEST web container starts before MinIO bucket exists. May need `docker compose restart web` after first `docker compose up -d`.
+27. `config.json` for test cases must be recopied to `~/.zhen/test_cases/` after any changes to the registry copy.
 
 ---
 

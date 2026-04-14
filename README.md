@@ -25,9 +25,11 @@
 
 ## Status
 
-Active development. Core platform complete (Phases 0-5).
+Active development. Core platform complete (Phases 0-5). Milestone 1 proven.
 
 Zhen is a domain-agnostic calibration platform for digital twins. The first vertical is building energy simulation, with miners calibrating thermal models against BOPTEST emulator ground truth.
+
+**Two-model architecture proven:** BOPTEST (EnergyPlus) generates complex ground truth, miners calibrate simplified RC models against it, scored via ASHRAE metrics. Two consecutive rounds on testnet: CVRMSE 1.25 and 0.96.
 
 **Platform (domain-agnostic):**
 - Scoring engine (CVRMSE, NMBE, R-squared) for any time-series calibration
@@ -44,7 +46,7 @@ Testnet live on Bittensor subnet 456. 82 tests passing.
 
 **Testnet:**
 - Subnet 456 live on Bittensor testnet
-- First successful calibration round completed (CVRMSE 0.0399)
+- Two-model architecture proven (Milestone 1 complete, 2026-04-14)
 - Weights set on-chain via Yuma Consensus
 
 ## Documentation
@@ -55,6 +57,7 @@ Testnet live on Bittensor subnet 456. 82 tests passing.
 
 ## Quick Links
 
+- [Proving roadmap](docs/ROADMAP.md)
 - [Mining guide](docs/MINE.md)
 - [Scoring formula](docs/SCORING.md)
 - [Validator setup](docs/VALIDATE.md)
