@@ -52,6 +52,7 @@ class ZhenMiner:
         wallet_hotkey: str = "default",
         algorithm: str = "bayesian",
         n_calls: int = 100,
+        axon_port: int = 8091,
     ) -> None:
         """Initialize the miner neuron.
 
@@ -62,10 +63,12 @@ class ZhenMiner:
             wallet_hotkey: Bittensor wallet hotkey name.
             algorithm: Calibration algorithm to use.
             n_calls: Number of optimization iterations.
+            axon_port: Port for the axon server to listen on.
         """
         self.netuid = netuid
         self.network = network
         self.n_calls = n_calls
+        self.axon_port = axon_port
 
         # Calibration engine
         self.calibration_engine = CalibrationEngine(algorithm=algorithm, n_calls=n_calls)
@@ -85,7 +88,7 @@ class ZhenMiner:
 
         self.wallet = bt.Wallet(name=wallet_name, hotkey=wallet_hotkey)
         self.subtensor = bt.Subtensor(network=self.network)
-        self.axon = bt.Axon(wallet=self.wallet)
+        self.axon = bt.Axon(wallet=self.wallet, port=self.axon_port)
 
         self.axon.attach(
             forward_fn=self.handler.forward,
@@ -106,7 +109,7 @@ class ZhenMiner:
             logger.error("Cannot run miner without subtensor connection")
             return
 
-        logger.info(f"Starting ZhenMiner (netuid={self.netuid})")
+        logger.info(f"Starting ZhenMiner (netuid={self.netuid}, port={self.axon_port})")
 
         # Serve axon on the network
         self.axon.serve(netuid=self.netuid, subtensor=self.subtensor)
@@ -135,6 +138,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wallet-hotkey", type=str, default="default", help="Wallet hotkey")
     parser.add_argument("--algorithm", type=str, default="bayesian", help="Calibration algorithm")
     parser.add_argument("--n-calls", type=int, default=100, help="Optimization iterations")
+    parser.add_argument("--axon-port", type=int, default=8091, help="Axon server port")
     return parser.parse_args()
 
 
@@ -147,5 +151,6 @@ if __name__ == "__main__":
         wallet_hotkey=args.wallet_hotkey,
         algorithm=args.algorithm,
         n_calls=args.n_calls,
+        axon_port=args.axon_port,
     )
     asyncio.run(miner.run())
