@@ -231,26 +231,33 @@ class BOPTESTManager:
 
             logger.info(f"BOPTEST simulation complete: {n_advance_steps} steps advanced")
 
-            # 5. Retrieve results (include "time" for timestamp-aware processing)
-            all_vars = ["time", *boptest_vars]
-            results = await self.client.get_results(testid, all_vars, start_time_s, end_time_s)
-
-            timestamps = [float(t) for t in results["time"]]
-            logger.info(f"BOPTEST returned {len(timestamps)} datapoints over {n_hours} hours")
-
-            # 6. Convert units, resample to hourly, and map to Zhen output names
+            # 5-6. Fetch each variable individually with its own timestamps,
+            # apply unit conversion, and resample to hourly.
+            # BOPTEST variables can have different reporting frequencies,
+            # so requesting them together gives mismatched array lengths.
             output: dict[str, list[float]] = {}
             for zhen_name, boptest_name, conversion, resample in zip(
                 scoring_outputs, boptest_vars, conversions, resample_methods, strict=True
             ):
-                if boptest_name not in results:
+                var_results = await self.client.get_results(
+                    testid, ["time", boptest_name], start_time_s, end_time_s
+                )
+
+                if boptest_name not in var_results:
                     logger.warning(
-                        f"BOPTEST variable '{boptest_name}' not in results. Available: {list(results.keys())}"
+                        f"BOPTEST variable '{boptest_name}' not in results. "
+                        f"Available: {list(var_results.keys())}"
                     )
                     output[zhen_name] = [0.0] * n_hours
                     continue
 
-                raw_values = [float(v) for v in results[boptest_name]]
+                raw_values = [float(v) for v in var_results[boptest_name]]
+                timestamps = [float(t) for t in var_results["time"]]
+                assert len(raw_values) == len(timestamps), (
+                    f"Mismatch: {len(raw_values)} values vs {len(timestamps)} "
+                    f"timestamps for {boptest_name}"
+                )
+                logger.info(f"  {zhen_name} ({boptest_name}): {len(raw_values)} raw datapoints")
 
                 # Apply unit conversion (uses timestamps for interval-aware conversions)
                 converter = UNIT_CONVERTERS[conversion]
@@ -258,13 +265,17 @@ class BOPTESTManager:
 
                 # watts_to_kwh produces N-1 values from N inputs (each value
                 # is energy over the interval ending at timestamps[i]).
-                # Trim timestamps to match: use the trailing N-1 timestamps.
+                # Trim timestamps to match: use the trailing entries.
                 n_converted = len(converted)
                 resample_ts = timestamps[-n_converted:] if n_converted < len(timestamps) else timestamps
+                assert len(converted) == len(resample_ts), (
+                    f"Mismatch: {len(converted)} values vs {len(resample_ts)} "
+                    f"timestamps for {boptest_name} after conversion"
+                )
 
                 logger.info(
                     f"  {zhen_name}: {len(raw_values)} raw -> {n_converted} converted, "
-                    f"{len(resample_ts)} timestamps after conversion"
+                    f"{len(resample_ts)} timestamps after {conversion}"
                 )
 
                 # Resample to hourly resolution
@@ -272,7 +283,7 @@ class BOPTESTManager:
                 output[zhen_name] = hourly
                 logger.info(
                     f"  {zhen_name}: {n_converted} converted -> {len(hourly)} hourly "
-                    f"(conversion={conversion}, resample={resample})"
+                    f"(resample={resample})"
                 )
 
             return output
