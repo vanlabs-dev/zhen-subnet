@@ -56,6 +56,7 @@ class ZhenValidator:
         wallet_hotkey: str = "default",
         local_mode: bool = True,
         manifest_path: Path = DEFAULT_MANIFEST_PATH,
+        boptest_url: str = "http://localhost:8000",
     ) -> None:
         """Initialize the validator neuron.
 
@@ -66,10 +67,12 @@ class ZhenValidator:
             wallet_hotkey: Bittensor wallet hotkey name.
             local_mode: Use RC model as ground truth (no BOPTEST needed).
             manifest_path: Path to manifest.json.
+            boptest_url: BOPTEST service URL for non-local ground truth.
         """
         self.netuid = netuid
         self.network = network
         self.local_mode = local_mode
+        self.boptest_url = boptest_url
         self.tempo_seconds = DEFAULT_TEMPO_SECONDS
 
         # Load manifest
@@ -77,7 +80,8 @@ class ZhenValidator:
         self.manifest = loader.load(manifest_path)
 
         # Core components
-        self.orchestrator = RoundOrchestrator(manifest_path=manifest_path)
+        boptest = None if local_mode else boptest_url
+        self.orchestrator = RoundOrchestrator(manifest_path=manifest_path, boptest_url=boptest)
         self.scoring_engine = ScoringEngine()
         self.ema = EMATracker(alpha=0.3)
         self.verification_engine = VerificationEngine()
@@ -148,6 +152,8 @@ class ZhenValidator:
         """Main loop: run rounds at tempo intervals."""
         logger.info(f"Starting ZhenValidator (netuid={self.netuid}, tempo={self.tempo_seconds}s)")
         logger.info(f"Local mode: {self.local_mode}")
+        if not self.local_mode:
+            logger.info(f"BOPTEST URL: {self.boptest_url}")
         logger.info(f"Manifest version: {self.manifest['version']}")
 
         while True:
@@ -182,10 +188,17 @@ class ZhenValidator:
         logger.info(f"Train period: hours {train_period[0]}-{train_period[1]}")
         logger.info(f"Test period: hours {test_period[0]}-{test_period[1]}")
 
-        # 3. Generate ground truth (local mode: RC with defaults)
-        logger.info("Generating ground truth (local mode)...")
-        held_out_data = self.orchestrator._generate_ground_truth(test_case, test_period)
-        training_data = self.orchestrator._generate_ground_truth(test_case, train_period)
+        # 3. Generate ground truth
+        if self.local_mode:
+            logger.info("Generating ground truth (local mode: RC model)...")
+        else:
+            logger.info(f"Generating ground truth (BOPTEST: {self.boptest_url})...")
+        held_out_data = await self.orchestrator.generate_ground_truth(
+            test_case, test_period, local_mode=self.local_mode
+        )
+        training_data = await self.orchestrator.generate_ground_truth(
+            test_case, train_period, local_mode=self.local_mode
+        )
 
         # 4. Build test case config
         config = self.orchestrator._load_test_case_config(test_case["id"])
@@ -260,6 +273,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wallet-name", type=str, default="zhen-validator", help="Wallet name")
     parser.add_argument("--wallet-hotkey", type=str, default="default", help="Wallet hotkey")
     parser.add_argument("--local-mode", action="store_true", default=True, help="Use RC model as ground truth")
+    parser.add_argument("--no-local-mode", action="store_false", dest="local_mode", help="Use BOPTEST for ground truth")
+    parser.add_argument("--boptest-url", type=str, default="http://localhost:8000", help="BOPTEST service URL")
     return parser.parse_args()
 
 
@@ -271,5 +286,6 @@ if __name__ == "__main__":
         wallet_name=args.wallet_name,
         wallet_hotkey=args.wallet_hotkey,
         local_mode=args.local_mode,
+        boptest_url=args.boptest_url,
     )
     asyncio.run(validator.run())

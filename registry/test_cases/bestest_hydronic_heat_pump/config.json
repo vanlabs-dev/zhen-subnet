@@ -33,5 +33,9 @@
   "difficulty": "easy",
   "climate": "Brussels, Belgium",
   "building_type": "residential_single_zone",
-  "hvac_type": "hydronic_heat_pump"
+  "hvac_type": "hydronic_heat_pump",
+  "boptest_output_mapping": {
+    "zone_air_temperature_C": "reaTZon_y",
+    "total_heating_energy_kWh": "reaPHeaPum_y"
+  }
 }
