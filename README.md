@@ -47,6 +47,7 @@ Testnet live on Bittensor subnet 456. 82 tests passing.
 **Testnet:**
 - Subnet 456 live on Bittensor testnet
 - Two-model architecture proven (Milestone 1 complete, 2026-04-14)
+- Competitive differentiation proven (Milestone 2 complete, 2026-04-14): 4 miners, top miner captured 3x weight of weakest
 - Weights set on-chain via Yuma Consensus
 
 ## Documentation

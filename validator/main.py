@@ -248,6 +248,17 @@ class ZhenValidator:
         scores = self.scoring_engine.compute(verified)
         logger.info(f"Scores: {scores}")
 
+        # Log per-metric breakdown for each miner
+        for uid, v in verified.items():
+            if v.reason:
+                logger.info(f"  UID {uid}: REJECTED ({v.reason})")
+            else:
+                logger.info(
+                    f"  UID {uid}: CVRMSE={v.cvrmse:.4f}, NMBE={v.nmbe:.4f}, "
+                    f"R2={v.r_squared:.4f}, sims={v.simulations_used}, "
+                    f"composite={scores.get(uid, 0.0):.4f}"
+                )
+
         # 9. Update EMA
         self.ema.update(scores)
         weights = self.ema.get_weights()
