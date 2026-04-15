@@ -4,7 +4,7 @@ Zhen is a decentralized digital twin calibration platform on Bittensor. First ve
 
 | Agent | Scope | Model | Purpose |
 |-------|-------|-------|---------|
-| validator-agent | validator/ | sonnet | Emulator management, round orchestration, verification, scoring, weight setting |
+| validator-agent | validator/ | sonnet | Emulator management, round orchestration, verification, scoring, weight setting, health, alerts, state |
 | miner-agent | miner/ | sonnet | Reference miner, calibration algorithms, simulator interaction |
 | protocol-agent | protocol/, scoring/ | sonnet | CalibrationSynapse definition, shared scoring logic, EMA tracker |
 | simulation-agent | simulation/ | sonnet | ZhenSimulator interface, RC network backend, simulation determinism |

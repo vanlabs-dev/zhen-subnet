@@ -71,9 +71,49 @@ This document tracks the proving milestones from testnet validation through main
 
 ---
 
+## Production Hardening [COMPLETE, 2026-04-15]
+
+**Goal:** Comprehensive codebase audit against production Bittensor subnet repos (Apex SN1, Score Vision, LeadPoet, Chutes, Targon, Lium-IO, Affine-Cortex). Two full passes addressing correctness, resilience, and operational readiness.
+
+**Audit Pass 1 (8 issues fixed):**
+
+- RC model energy output corrected from Watts to kWh
+- EMA decay for absent miners (prevents stale weight holding)
+- Dead code removal from RoundOrchestrator
+- Documentation updates (VALIDATE.md, MINE.md, btcli v10 syntax)
+- Integration test graceful skip when config missing
+- Metagraph sync error resilience
+- Empty stubs removed (eval/, dashboard/)
+
+**Audit Pass 2 (10 issues fixed, reference repo patterns):**
+
+- Weight processing via process_weights_for_netuid before chain submission
+- NaN/Inf guard on weight vector
+- Spec version tracking (protocol.__spec_version__, passed as version_key)
+- Miner blacklist verification (reject unregistered hotkeys)
+- Auto-updater script (PM2 + git pull every 5 min)
+- httpx connection cleanup (async context manager)
+- Dockerfiles for miner and validator
+- Weight fallback (copy_weights_from_chain on scoring failure)
+- Health check HTTP endpoint (GET /health on port 8080)
+- env.example template
+
+**Post-audit improvements (6 items):**
+
+- Structured logging with daily file rotation
+- Graceful shutdown with signal handling (SIGTERM/SIGINT)
+- Validator state persistence (crash recovery via ~/.zhen/validator_state.json)
+- Webhook alerting for round failures
+- Weight-setting timeout (120s, prevents chain hang blocking)
+- Anti-default-parameter detection in verification engine
+
+---
+
 ## Milestone 4: External Miners
 
 **Goal:** Independent miners can join and compete using only published documentation.
+
+**Prerequisites:** Codebase is audit-complete (production hardening above). Dockerfiles, PM2 scripts, and operational docs (MINE.md, VALIDATE.md, SCORING.md, RULES.md) are ready for external users.
 
 **Exit criteria:**
 

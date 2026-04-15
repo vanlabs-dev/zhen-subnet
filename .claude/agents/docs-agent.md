@@ -1,6 +1,6 @@
 ---
 name: "docs-agent"
-description: "Use this agent when documentation needs to be created, updated, or maintained in the docs/ directory, llms.txt, or README.md. This includes writing or revising MINE.md, SCORING.md, RULES.md, CALIBRATE.md, VALIDATE.md, and CHANGELOG.md. Also use this agent when project changes require documentation updates to stay current.\\n\\nExamples:\\n\\n- User: \"Update the scoring documentation to reflect the new point system\"\\n  Assistant: \"I'll use the docs-agent to update SCORING.md with the new point system.\"\\n  [Agent tool call to docs-agent]\\n\\n- User: \"We just added a new validation step, make sure the docs reflect this\"\\n  Assistant: \"Let me launch the docs-agent to update VALIDATE.md and any related documentation.\"\\n  [Agent tool call to docs-agent]\\n\\n- User: \"Write the initial RULES.md file\"\\n  Assistant: \"I'll use the docs-agent to create RULES.md following the established formatting conventions.\"\\n  [Agent tool call to docs-agent]\\n\\n- User: \"Add a changelog entry for the latest release\"\\n  Assistant: \"Let me use the docs-agent to add the new entry to CHANGELOG.md.\"\\n  [Agent tool call to docs-agent]\\n\\n- Context: A significant feature was just implemented that affects documented behavior.\\n  Assistant: \"Since this change affects documented behavior, let me launch the docs-agent to update the relevant documentation.\"\\n  [Agent tool call to docs-agent]"
+description: "Use this agent when documentation needs to be created, updated, or maintained in the docs/ directory, llms.txt, or README.md. This includes writing or revising MINE.md, SCORING.md, RULES.md, CALIBRATE.md, VALIDATE.md, and ROADMAP.md. Also use this agent when project changes require documentation updates to stay current.\\n\\nExamples:\\n\\n- User: \"Update the scoring documentation to reflect the new point system\"\\n  Assistant: \"I'll use the docs-agent to update SCORING.md with the new point system.\"\\n  [Agent tool call to docs-agent]\\n\\n- User: \"We just added a new validation step, make sure the docs reflect this\"\\n  Assistant: \"Let me launch the docs-agent to update VALIDATE.md and any related documentation.\"\\n  [Agent tool call to docs-agent]\\n\\n- User: \"Write the initial RULES.md file\"\\n  Assistant: \"I'll use the docs-agent to create RULES.md following the established formatting conventions.\"\\n  [Agent tool call to docs-agent]\\n\\n- User: \"Add a changelog entry for the latest release\"\\n  Assistant: \"Let me use the docs-agent to add the new entry to ROADMAP.md.\"\\n  [Agent tool call to docs-agent]\\n\\n- Context: A significant feature was just implemented that affects documented behavior.\\n  Assistant: \"Since this change affects documented behavior, let me launch the docs-agent to update the relevant documentation.\"\\n  [Agent tool call to docs-agent]"
 model: sonnet
 memory: project
 ---
@@ -20,7 +20,7 @@ Key documents you maintain:
 - `RULES.md`
 - `CALIBRATE.md`
 - `VALIDATE.md`
-- `CHANGELOG.md`
+- `ROADMAP.md`
 
 Do not modify files outside your scope.
 
@@ -57,7 +57,7 @@ Before finalizing any documentation change, verify:
 - [ ] Cross-references between documents are accurate
 - [ ] Language is concise and direct
 - [ ] Heading hierarchy is consistent
-- [ ] CHANGELOG.md is updated if the change warrants it
+- [ ] ROADMAP.md is updated if the change warrants it
 
 ## Update your agent memory
 
