@@ -20,6 +20,7 @@ import time
 
 import protocol
 from protocol.synapse import CalibrationSynapse
+from validator.alerts import WebhookAlerter
 from validator.health import HealthServer
 from validator.network.challenge_sender import ChallengeSender
 from validator.network.result_receiver import ResponseParser
@@ -91,6 +92,7 @@ class ZhenValidator:
         self.verification_engine = VerificationEngine()
         self.response_parser = ResponseParser()
         self.health = HealthServer(port=health_port)
+        self.alerter = WebhookAlerter(webhook_url=os.environ.get("ZHEN_ALERT_WEBHOOK"))
         self.round_count = 0
         self._shutdown_requested = False
 
@@ -267,6 +269,13 @@ class ZhenValidator:
 
         await self.health.start()
 
+        await self.alerter.send("startup", "Validator started", {
+            "netuid": self.netuid,
+            "network": self.network,
+            "manifest_version": self.manifest["version"],
+            "test_cases": len(self.manifest.get("test_cases", [])),
+        })
+
         while True:
             success = False
             try:
@@ -274,6 +283,10 @@ class ZhenValidator:
                 success = True
             except Exception as e:
                 logger.error(f"Round failed: {e}", exc_info=True)
+                await self.alerter.send("round_failed", f"Round failed: {e}", {
+                    "round": self.round_count - 1,
+                    "error": str(e),
+                })
             finally:
                 self.health.record_round(success)
 
@@ -401,11 +414,15 @@ class ZhenValidator:
                 fallback = self.weight_setter.copy_weights_from_chain()
                 if fallback:
                     await self.weight_setter.set_weights(fallback)
+                else:
+                    await self.alerter.send("weights_failed", "Failed to set weights on chain")
         elif self.weight_setter is not None:
             logger.warning("No weights to set, attempting chain fallback")
             fallback = self.weight_setter.copy_weights_from_chain()
             if fallback:
                 await self.weight_setter.set_weights(fallback)
+            else:
+                await self.alerter.send("weights_failed", "Failed to set weights on chain")
 
         # Persist state for crash recovery
         save_state(self.round_count, self.ema.scores, round_id)
