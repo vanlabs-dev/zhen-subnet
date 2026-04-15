@@ -269,12 +269,16 @@ class ZhenValidator:
 
         await self.health.start()
 
-        await self.alerter.send("startup", "Validator started", {
-            "netuid": self.netuid,
-            "network": self.network,
-            "manifest_version": self.manifest["version"],
-            "test_cases": len(self.manifest.get("test_cases", [])),
-        })
+        await self.alerter.send(
+            "startup",
+            "Validator started",
+            {
+                "netuid": self.netuid,
+                "network": self.network,
+                "manifest_version": self.manifest["version"],
+                "test_cases": len(self.manifest.get("test_cases", [])),
+            },
+        )
 
         while True:
             success = False
@@ -283,10 +287,14 @@ class ZhenValidator:
                 success = True
             except Exception as e:
                 logger.error(f"Round failed: {e}", exc_info=True)
-                await self.alerter.send("round_failed", f"Round failed: {e}", {
-                    "round": self.round_count - 1,
-                    "error": str(e),
-                })
+                await self.alerter.send(
+                    "round_failed",
+                    f"Round failed: {e}",
+                    {
+                        "round": self.round_count - 1,
+                        "error": str(e),
+                    },
+                )
             finally:
                 self.health.record_round(success)
 

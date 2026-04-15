@@ -2,11 +2,13 @@
 
 Sets normalized EMA scores as weights on-chain via the Bittensor SDK,
 with weight processing, NaN/Inf guards, and version tracking.
-Uses SDK v10 ExtrinsicResponse.
+Uses SDK v10 ExtrinsicResponse. Chain calls run in a thread executor
+with a timeout to prevent indefinite hangs.
 """
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import logging
 from typing import Any
@@ -61,6 +63,8 @@ def _process_weights_manual(
 class WeightSetter:
     """Sets miner weights on-chain via Bittensor subtensor."""
 
+    WEIGHT_TIMEOUT_SECONDS: int = 120
+
     def __init__(self, subtensor: Any, wallet: Any, netuid: int, metagraph: Any = None) -> None:
         """Initialize the weight setter.
 
@@ -75,11 +79,64 @@ class WeightSetter:
         self.netuid = netuid
         self.metagraph = metagraph
 
+    def _set_weights_sync(self, uids_arr: np.ndarray, weights_arr: np.ndarray) -> bool:
+        """Synchronous weight-setting call (runs in thread executor).
+
+        Processes weights, submits to chain, and handles the response.
+
+        Args:
+            uids_arr: Processed UID array (int64).
+            weights_arr: Processed weight array (float32).
+
+        Returns:
+            True if weights were set successfully, False otherwise.
+        """
+        if _HAS_PROCESS_WEIGHTS and self.metagraph is not None:
+            logger.info("Processing weights via bt.utils.weight_utils")
+            try:
+                uids_arr, weights_arr = _process_weights_fn(
+                    uids_arr, weights_arr, self.netuid, self.subtensor, self.metagraph
+                )
+            except Exception as e:
+                logger.warning(f"SDK weight processing failed, using manual: {e}")
+                uids_arr, weights_arr = _process_weights_manual(uids_arr, weights_arr)
+        else:
+            if not _HAS_PROCESS_WEIGHTS:
+                logger.info("Processing weights manually (SDK utility not available)")
+            else:
+                logger.info("Processing weights manually (no metagraph provided)")
+            uids_arr, weights_arr = _process_weights_manual(uids_arr, weights_arr)
+
+        logger.info(f"Setting weights for {len(uids_arr)} miners on netuid {self.netuid}")
+        response = self.subtensor.set_weights(
+            wallet=self.wallet,
+            netuid=self.netuid,
+            uids=uids_arr.tolist(),
+            weights=weights_arr.tolist(),
+            wait_for_inclusion=True,
+            wait_for_finalization=True,
+            version_key=protocol.__spec_version__,
+        )
+
+        # SDK v10: ExtrinsicResponse with .success attribute
+        if hasattr(response, "success"):
+            if response.success:
+                block_hash = getattr(response, "block_hash", "unknown")
+                logger.info(f"Weights set successfully (block: {block_hash})")
+                return True
+            else:
+                error = getattr(response, "error_message", "unknown error")
+                logger.error(f"Weight setting failed: {error}")
+                return False
+
+        # Fallback for older SDK versions
+        return bool(response)
+
     async def set_weights(self, scores: dict[int, float]) -> bool:
         """Set weights on-chain from normalized scores.
 
-        Applies NaN/Inf guards, processes weights for chain format,
-        and uses SDK v10 ExtrinsicResponse pattern.
+        Applies NaN/Inf guards, then runs the blocking chain call in a
+        thread executor with a timeout to prevent indefinite hangs.
 
         Args:
             scores: Mapping of miner UID to normalized weight (should sum to 1.0).
@@ -104,51 +161,21 @@ class WeightSetter:
             logger.warning("All weights are zero after NaN cleanup, skipping submission")
             return False
 
-        # Process weights for chain submission
         uids_arr = np.array(uids, dtype=np.int64)
 
-        if _HAS_PROCESS_WEIGHTS and self.metagraph is not None:
-            logger.info("Processing weights via bt.utils.weight_utils")
-            try:
-                uids_arr, weights_arr = _process_weights_fn(
-                    uids_arr, weights_arr, self.netuid, self.subtensor, self.metagraph
-                )
-            except Exception as e:
-                logger.warning(f"SDK weight processing failed, using manual: {e}")
-                uids_arr, weights_arr = _process_weights_manual(uids_arr, weights_arr)
-        else:
-            if not _HAS_PROCESS_WEIGHTS:
-                logger.info("Processing weights manually (SDK utility not available)")
-            else:
-                logger.info("Processing weights manually (no metagraph provided)")
-            uids_arr, weights_arr = _process_weights_manual(uids_arr, weights_arr)
-
         try:
-            logger.info(f"Setting weights for {len(uids_arr)} miners on netuid {self.netuid}")
-            response = self.subtensor.set_weights(
-                wallet=self.wallet,
-                netuid=self.netuid,
-                uids=uids_arr.tolist(),
-                weights=weights_arr.tolist(),
-                wait_for_inclusion=True,
-                wait_for_finalization=True,
-                version_key=protocol.__spec_version__,
+            loop = asyncio.get_event_loop()
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, self._set_weights_sync, uids_arr, weights_arr),
+                timeout=float(self.WEIGHT_TIMEOUT_SECONDS),
             )
-
-            # SDK v10: ExtrinsicResponse with .success attribute
-            if hasattr(response, "success"):
-                if response.success:
-                    block_hash = getattr(response, "block_hash", "unknown")
-                    logger.info(f"Weights set successfully (block: {block_hash})")
-                    return True
-                else:
-                    error = getattr(response, "error_message", "unknown error")
-                    logger.error(f"Weight setting failed: {error}")
-                    return False
-
-            # Fallback for older SDK versions
-            return bool(response)
-
+            return result
+        except asyncio.TimeoutError:
+            logger.error(
+                f"Weight setting timed out after {self.WEIGHT_TIMEOUT_SECONDS}s "
+                f"(chain may be congested)"
+            )
+            return False
         except Exception as e:
             logger.error(f"Failed to set weights: {e}")
             return False
