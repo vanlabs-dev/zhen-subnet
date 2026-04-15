@@ -119,7 +119,7 @@ class RCNetworkBackend:
             Q_hvac = np.float64(0.0)
             if T_zone[i - 1] < T_setpoint:
                 Q_hvac = (T_setpoint - T_zone[i - 1]) * self.C_zone / np.float64(self.dt)
-                Q_heating[i] = Q_hvac / self.cop
+                Q_heating[i] = Q_hvac / self.cop / 1000.0
 
             dT = (Q_total + Q_hvac) * np.float64(self.dt) / self.C_zone
             T_zone[i] = T_zone[i - 1] + dT
