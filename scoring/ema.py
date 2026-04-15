@@ -38,6 +38,13 @@ class EMATracker:
             else:
                 self.scores[uid] = score
 
+        # Decay absent miners toward zero and prune negligible scores
+        for uid in list(self.scores.keys()):
+            if uid not in round_scores:
+                self.scores[uid] = (1 - self.alpha) * self.scores[uid]
+                if self.scores[uid] < 1e-6:
+                    del self.scores[uid]
+
     def get_weights(self) -> dict[int, float]:
         """Return normalized EMA scores for weight setting.
 
