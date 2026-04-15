@@ -253,7 +253,10 @@ class ZhenValidator:
         # 1. Sync metagraph
         if self.metagraph is not None:
             logger.info("Syncing metagraph...")
-            self.metagraph.sync()
+            try:
+                self.metagraph.sync()
+            except Exception as e:
+                logger.warning(f"Metagraph sync failed, using stale data: {e}")
             logger.info(f"Metagraph: {len(self.metagraph.neurons)} neurons")
 
         # 2. Select test case and compute split
