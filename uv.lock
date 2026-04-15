@@ -2831,6 +2831,7 @@ name = "zhen-subnet"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "aiohttp" },
     { name = "docker" },
     { name = "httpx" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -2856,6 +2857,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aiohttp", specifier = ">=3.13.5" },
     { name = "bittensor", marker = "extra == 'bittensor'" },
     { name = "bittensor-cli", marker = "extra == 'bittensor'" },
     { name = "docker" },

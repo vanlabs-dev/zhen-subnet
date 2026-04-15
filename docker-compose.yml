@@ -2,3 +2,28 @@
 # Decentralized digital twin calibration platform
 # Current vertical: building energy (BOPTEST emulators)
 # See docs/ARCHITECTURE.md Section 5 for registry structure
+#
+# Usage:
+#   docker compose --profile miner up -d
+#   docker compose --profile validator up -d
+
+services:
+  miner:
+    build:
+      context: .
+      dockerfile: Dockerfile.miner
+    ports:
+      - "8091:8091"
+    command: ["--netuid", "456", "--network", "test", "--wallet-name", "zhen-miner", "--axon-port", "8091"]
+    volumes:
+      - ~/.bittensor:/root/.bittensor:ro
+    profiles: ["miner"]
+
+  validator:
+    build:
+      context: .
+      dockerfile: Dockerfile.validator
+    command: ["--netuid", "456", "--network", "test", "--no-local-mode", "--boptest-url", "http://host.docker.internal:8000"]
+    volumes:
+      - ~/.bittensor:/root/.bittensor:ro
+    profiles: ["validator"]

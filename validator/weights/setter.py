@@ -61,9 +61,7 @@ def _process_weights_manual(
 class WeightSetter:
     """Sets miner weights on-chain via Bittensor subtensor."""
 
-    def __init__(
-        self, subtensor: Any, wallet: Any, netuid: int, metagraph: Any = None
-    ) -> None:
+    def __init__(self, subtensor: Any, wallet: Any, netuid: int, metagraph: Any = None) -> None:
         """Initialize the weight setter.
 
         Args:
@@ -154,3 +152,45 @@ class WeightSetter:
         except Exception as e:
             logger.error(f"Failed to set weights: {e}")
             return False
+
+    def copy_weights_from_chain(self) -> dict[int, float]:
+        """Copy existing weights from chain as a fallback.
+
+        Used when scoring fails to avoid missing weight-setting windows.
+        Reads the current on-chain weight vector aggregated across
+        validators with permit, weighted by stake.
+
+        Returns:
+            Mapping of miner UID to weight, or empty dict on failure.
+        """
+        if self.metagraph is None:
+            logger.warning("No metagraph available for weight fallback")
+            return {}
+
+        try:
+            self.metagraph.sync(subtensor=self.subtensor)
+
+            valid_indices = np.where(self.metagraph.validator_permit)[0]
+            if len(valid_indices) == 0:
+                logger.warning("No validators with permit found for weight fallback")
+                return {}
+
+            valid_weights = self.metagraph.weights[valid_indices]
+            valid_stakes = self.metagraph.stake[valid_indices]
+
+            total_stake = float(np.sum(valid_stakes))
+            if total_stake == 0:
+                return {}
+
+            normalized_stakes = valid_stakes / total_stake
+            stake_weighted_avg: np.ndarray = np.dot(normalized_stakes, valid_weights)
+
+            uids = self.metagraph.uids.tolist()
+            weights_list = stake_weighted_avg.tolist()
+
+            result = {uid: w for uid, w in zip(uids, weights_list, strict=False) if w > 0}
+            logger.info(f"Copied {len(result)} weights from chain as fallback")
+            return result
+        except Exception as e:
+            logger.error(f"Failed to copy weights from chain: {e}")
+            return {}

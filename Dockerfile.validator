@@ -1,0 +1,24 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Copy project files
+COPY pyproject.toml uv.lock ./
+COPY protocol/ protocol/
+COPY scoring/ scoring/
+COPY simulation/ simulation/
+COPY validator/ validator/
+COPY registry/ registry/
+
+# Install dependencies
+RUN uv sync --all-groups --frozen
+
+# Copy test case data into the image
+RUN mkdir -p /root/.zhen/test_cases
+COPY registry/test_cases/ /root/.zhen/test_cases/
+
+ENTRYPOINT ["uv", "run", "python", "-m", "validator.main"]
+CMD ["--netuid", "456", "--network", "test"]

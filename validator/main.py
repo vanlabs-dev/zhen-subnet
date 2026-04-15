@@ -19,6 +19,7 @@ import time
 
 import protocol
 from protocol.synapse import CalibrationSynapse
+from validator.health import HealthServer
 from validator.network.challenge_sender import ChallengeSender
 from validator.network.result_receiver import ResponseParser
 from validator.registry.manifest import ManifestLoader
@@ -60,6 +61,7 @@ class ZhenValidator:
         local_mode: bool = True,
         manifest_path: Path = DEFAULT_MANIFEST_PATH,
         boptest_url: str = "http://localhost:8000",
+        health_port: int = 8080,
     ) -> None:
         """Initialize the validator neuron.
 
@@ -71,6 +73,7 @@ class ZhenValidator:
             local_mode: Use RC model as ground truth (no BOPTEST needed).
             manifest_path: Path to manifest.json.
             boptest_url: BOPTEST service URL for non-local ground truth.
+            health_port: Port for the HTTP health check endpoint.
         """
         self.netuid = netuid
         self.network = network
@@ -89,6 +92,7 @@ class ZhenValidator:
         self.ema = EMATracker(alpha=0.3)
         self.verification_engine = VerificationEngine()
         self.response_parser = ResponseParser()
+        self.health = HealthServer(port=health_port)
         self.round_count = 0
 
         # Bittensor components
@@ -236,11 +240,17 @@ class ZhenValidator:
         logger.info(f"Manifest version: {self.manifest['version']}")
         logger.info(f"Spec version: {protocol.__spec_version__}")
 
+        await self.health.start()
+
         while True:
+            success = False
             try:
                 await self.run_round()
+                success = True
             except Exception as e:
                 logger.error(f"Round failed: {e}", exc_info=True)
+            finally:
+                self.health.record_round(success)
 
             logger.info(f"Sleeping {self.tempo_seconds}s until next round...")
             await asyncio.sleep(self.tempo_seconds)
@@ -353,7 +363,15 @@ class ZhenValidator:
             if success:
                 logger.info("Weights set on chain successfully")
             else:
-                logger.warning("Failed to set weights on chain")
+                logger.warning("Failed to set weights, attempting chain fallback")
+                fallback = self.weight_setter.copy_weights_from_chain()
+                if fallback:
+                    await self.weight_setter.set_weights(fallback)
+        elif self.weight_setter is not None:
+            logger.warning("No weights to set, attempting chain fallback")
+            fallback = self.weight_setter.copy_weights_from_chain()
+            if fallback:
+                await self.weight_setter.set_weights(fallback)
 
         logger.info(f"=== {round_id} complete ===")
         return {"round_id": round_id, "scores": scores, "weights": weights}
@@ -369,6 +387,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--local-mode", action="store_true", default=True, help="Use RC model as ground truth")
     parser.add_argument("--no-local-mode", action="store_false", dest="local_mode", help="Use BOPTEST for ground truth")
     parser.add_argument("--boptest-url", type=str, default="http://localhost:8000", help="BOPTEST service URL")
+    parser.add_argument("--health-port", type=int, default=8080, help="Health check HTTP port")
     return parser.parse_args()
 
 
@@ -381,5 +400,6 @@ if __name__ == "__main__":
         wallet_hotkey=args.wallet_hotkey,
         local_mode=args.local_mode,
         boptest_url=args.boptest_url,
+        health_port=args.health_port,
     )
     asyncio.run(validator.run())

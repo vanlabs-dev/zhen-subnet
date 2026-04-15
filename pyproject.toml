@@ -17,6 +17,7 @@ dependencies = [
     "scipy",
     "httpx",
     "docker",
+    "aiohttp>=3.13.5",
 ]
 
 [project.optional-dependencies]
@@ -32,7 +33,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["validator", "miner", "protocol", "scoring", "simulation", "eval"]
+packages = ["validator", "miner", "protocol", "scoring", "simulation"]
 
 [tool.ruff]
 line-length = 120
@@ -58,6 +59,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "skopt.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "aiohttp.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
