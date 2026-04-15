@@ -16,37 +16,20 @@
 
 ## Status
 
-Active development. Core platform complete (Phases 0-5). Milestone 3 proven.
+Testnet live on Bittensor subnet 456. 99 tests passing.
 
-Zhen is a domain-agnostic calibration platform for digital twins. The first vertical is building energy simulation, with miners calibrating thermal models against BOPTEST emulator ground truth.
+**Milestones proven:**
+- Two-model architecture (Milestone 1, 2026-04-14)
+- Competitive differentiation with 4 miners (Milestone 2, 2026-04-14)
+- Test case rotation with 3 BOPTEST cases (Milestone 3, 2026-04-15)
 
-**Test case rotation proven:** 3 BOPTEST test cases (bestest_hydronic_heat_pump, bestest_air, bestest_hydronic) with SHA-256 deterministic rotation per round. Different building types expose different calibration challenges, preventing single-strategy dominance.
+**Production hardened:** weight processing, health endpoint, state persistence, graceful shutdown, webhook alerting, anti-gaming verification.
 
-**Platform (domain-agnostic):**
-- Scoring engine (CVRMSE, NMBE, R-squared) for any time-series calibration
-- Two-model architecture: complex ground truth vs simplified calibration target
-- Parallel verification with deterministic scoring
-- Reference miner with Bayesian optimization
+## How It Works
 
-**First vertical: building energy**
-- RC network thermal models
-- BOPTEST emulator integration
-- ASHRAE-standard accuracy metrics
+Zhen uses a two-model architecture. Validators run a complex emulator (BOPTEST/EnergyPlus) to generate ground truth data, then challenge miners to calibrate a simplified RC network model against that data. Miners use Bayesian optimization to find parameters that minimize the gap between the simplified model and reality. Validators score submissions on held-out test data using ASHRAE metrics (CVRMSE, NMBE, R-squared) and set weights on-chain via Yuma Consensus.
 
-Testnet live on Bittensor subnet 456. 77 tests passing.
-
-**Testnet:**
-- Subnet 456 live on Bittensor testnet
-- Two-model architecture proven (Milestone 1 complete, 2026-04-14)
-- Competitive differentiation proven (Milestone 2 complete, 2026-04-14): 4 miners, top miner captured 3x weight of weakest
-- Test case rotation proven (Milestone 3 complete, 2026-04-15): 3 BOPTEST test cases, deterministic rotation
-- Weights set on-chain via Yuma Consensus
-
-## Documentation
-
-- [Mechanism Design](docs/MECHANISM.md) - what the subnet does and why
-- [Technical Architecture](docs/ARCHITECTURE.md) - how it works
-- [Implementation Plan](docs/IMPLEMENTATION.md) - phased build plan
+The platform is domain-agnostic. The first vertical is building energy simulation with 3 test cases (bestest_hydronic_heat_pump, bestest_air, bestest_hydronic), rotated deterministically per round via SHA-256 hashing.
 
 ## Quick Links
 
@@ -66,6 +49,18 @@ cd zhen-subnet
 uv sync --all-groups
 uv run pytest
 ```
+
+## Docker Deployment
+
+```bash
+# Miner
+docker compose --profile miner up -d
+
+# Validator
+docker compose --profile validator up -d
+```
+
+See [docs/MINE.md](docs/MINE.md) and [docs/VALIDATE.md](docs/VALIDATE.md) for full setup guides.
 
 ## License
 

@@ -16,6 +16,12 @@ Bittensor subnet for decentralized digital twin calibration. Domain-agnostic pla
 - Test case registry: registry/
 - Tests: tests/
 - Agent definitions: agents/AGENTS.md
+- State persistence: validator/state.py
+- Health endpoint: validator/health.py
+- Webhook alerts: validator/alerts.py
+- Logging: validator/utils/logging.py
+- PM2 scripts: scripts/
+- Docker: Dockerfile.miner, Dockerfile.validator
 
 ## Rules
 - No em dashes or en dashes anywhere in the codebase
@@ -26,6 +32,7 @@ Bittensor subnet for decentralized digital twin calibration. Domain-agnostic pla
 - hashlib.sha256 for ALL deterministic hashing (never Python hash())
 - Every function has a docstring
 - Every module has a module-level docstring
+- Spec version tracked in protocol/__init__.py, increment on breaking changes
 
 ## Key Architecture
 Two-model design:

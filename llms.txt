@@ -18,9 +18,18 @@ The architecture is domain-agnostic. Any domain with a complex simulation and a 
 - Ground truth: BOPTEST containerized building emulators
 - Simplified models: RC network thermal models
 - Climate: Brussels, Belgium (BESTEST reference buildings)
+- 3 test cases: bestest_hydronic_heat_pump, bestest_air, bestest_hydronic
+- Spec version: 1
+
+## Deployment
+- Docker: Dockerfile.miner, Dockerfile.validator, docker-compose.yml with profiles
+- PM2: scripts/start_validator.sh, scripts/start_miner.sh, scripts/auto_update.sh
+- Health: GET /health on port 8080 (validator)
+- Alerts: ZHEN_ALERT_WEBHOOK environment variable for Discord/Slack notifications
 
 ## Documentation
 - Mining Guide: docs/MINE.md
 - Scoring Formula: docs/SCORING.md
 - Validator Setup: docs/VALIDATE.md
 - Subnet Rules: docs/RULES.md
+- Proving Roadmap: docs/ROADMAP.md
