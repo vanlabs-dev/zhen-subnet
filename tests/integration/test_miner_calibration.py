@@ -8,12 +8,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from miner.calibration.bayesian import BayesianCalibrator
 from simulation.rc_network import RCNetworkBackend
+from validator.round import split_generator, test_case_selector
 from validator.round.orchestrator import RoundOrchestrator
+from validator.scoring import breakdown
+from validator.scoring.ema import EMATracker
+from validator.scoring.engine import ScoringEngine
+from validator.verification.engine import VerificationEngine
 
 TEST_CASE_ID = "bestest_hydronic_heat_pump"
 _ZHEN_CONFIG = Path.home() / ".zhen" / "test_cases" / TEST_CASE_ID / "config.json"
@@ -144,10 +150,33 @@ async def test_end_to_end_round_with_miner() -> None:
         2: {"calibrated_params": random_params, "simulations_used": 0},
     }
 
-    # Run round
+    # Run round with components wired directly (mirrors validator/main.py)
     orchestrator = RoundOrchestrator(manifest_path=MANIFEST_PATH)
-    result = await orchestrator.run_round(submissions)
-    scores = result["scores"]
+    scoring_engine = ScoringEngine()
+    ema = EMATracker(alpha=0.3)
+    verification_engine = VerificationEngine()
+
+    round_id = "round-0"
+    test_case = test_case_selector.select(round_id, orchestrator.manifest)
+    _train_period, test_period = split_generator.compute(round_id, test_case["id"])
+    held_out_data = await orchestrator.generate_ground_truth(test_case, test_period, local_mode=True)
+    verification_config = orchestrator._build_verification_config(test_case)
+    sim_budget = verification_config.get("simulation_budget", 1000)
+
+    verified = await verification_engine.verify_all(
+        submissions, verification_config, test_period, held_out_data, sim_budget=sim_budget,
+    )
+    scores = scoring_engine.compute(verified, sim_budget=sim_budget)
+    raw_scores = scoring_engine.compute_raw(verified, sim_budget=sim_budget)
+    ema.update(scores)
+    weights = ema.get_weights()
+
+    breakdowns: dict[int, dict[str, Any]] = {}
+    for uid, v in verified.items():
+        breakdowns[uid] = breakdown.generate(
+            uid=uid, verified=v, composite=raw_scores.get(uid, 0.0),
+            weights=weights, round_id=round_id, sim_budget=sim_budget,
+        )
 
     print(f"\n{'=' * 60}")
     print("End-to-End Round Results")
@@ -160,7 +189,7 @@ async def test_end_to_end_round_with_miner() -> None:
 
     # Breakdowns
     for uid in [0, 1, 2]:
-        bd = result["breakdowns"][uid]
+        bd = breakdowns[uid]
         status = bd["status"]
         if status == "verified":
             metrics = bd["metrics"]

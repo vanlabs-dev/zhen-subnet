@@ -15,11 +15,6 @@ from typing import Any
 from simulation.rc_network import RCNetworkBackend
 from validator.emulator.manager import BOPTESTManager
 from validator.registry.manifest import ManifestLoader
-from validator.round import split_generator, test_case_selector
-from validator.scoring import breakdown
-from validator.scoring.ema import EMATracker
-from validator.scoring.engine import ScoringEngine
-from validator.verification.engine import VerificationEngine
 
 logger = logging.getLogger(__name__)
 
@@ -41,77 +36,6 @@ class RoundOrchestrator:
         loader = ManifestLoader()
         self.manifest = loader.load(manifest_path)
         self.boptest_url = boptest_url
-        self.scoring_engine = ScoringEngine()
-        self.ema = EMATracker(alpha=0.3)
-        self.verification_engine = VerificationEngine()
-        self.round_count = 0
-
-    async def run_round(self, miner_submissions: dict[int, dict[str, Any]]) -> dict[str, Any]:
-        """Run a single calibration round with provided miner submissions.
-
-        Args:
-            miner_submissions: Mapping of miner UID to submission dict containing
-                "calibrated_params" (dict[str, float]) and "simulations_used" (int).
-
-        Returns:
-            Round results dict with scores, breakdowns, weights, and metadata.
-        """
-        round_id = f"round-{self.round_count}"
-        self.round_count += 1
-
-        # 1. Select test case deterministically
-        test_case = test_case_selector.select(round_id, self.manifest)
-
-        # 2. Compute train/test split
-        train_period, test_period = split_generator.compute(round_id, test_case["id"])
-
-        # 3. Generate held-out ground truth (local mode within orchestrator)
-        held_out_data = self._generate_ground_truth_local(test_case, test_period)
-
-        # 4. Build test case config for verification (merge manifest + config.json)
-        verification_test_case = self._build_verification_config(test_case)
-
-        # 5. Verify all miner submissions
-        verified = await self.verification_engine.verify_all(
-            miner_submissions,
-            verification_test_case,
-            test_period,
-            held_out_data,
-            sim_budget=verification_test_case.get("simulation_budget", 1000),
-        )
-
-        # 6. Compute scores
-        sim_budget = verification_test_case.get("simulation_budget", 1000)
-        scores = self.scoring_engine.compute(verified, sim_budget=sim_budget)
-        raw_scores = self.scoring_engine.compute_raw(verified, sim_budget=sim_budget)
-
-        # 7. Update EMA
-        self.ema.update(scores)
-        weights = self.ema.get_weights()
-
-        # 8. Generate breakdowns
-        breakdowns: dict[int, dict[str, Any]] = {}
-        for uid, v in verified.items():
-            breakdowns[uid] = breakdown.generate(
-                uid=uid,
-                verified=v,
-                composite=raw_scores.get(uid, 0.0),
-                weights=weights,
-                round_id=round_id,
-                sim_budget=sim_budget,
-            )
-
-        return {
-            "round_id": round_id,
-            "test_case_id": test_case["id"],
-            "train_period": train_period,
-            "test_period": test_period,
-            "scores": scores,
-            "raw_scores": raw_scores,
-            "weights": weights,
-            "breakdowns": breakdowns,
-            "verified": verified,
-        }
 
     async def generate_ground_truth(
         self,
