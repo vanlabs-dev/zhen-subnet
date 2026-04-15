@@ -29,6 +29,18 @@ class BOPTESTClient:
         self.url = api_url.rstrip("/")
         self.client = httpx.AsyncClient(timeout=30.0)
 
+    async def close(self) -> None:
+        """Close the underlying httpx client and release connections."""
+        await self.client.aclose()
+
+    async def __aenter__(self) -> BOPTESTClient:
+        """Enter async context manager."""
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        """Exit async context manager, closing the client."""
+        await self.close()
+
     async def select_testcase(self, testcase_id: str) -> str:
         """Select a test case and start a running instance.
 

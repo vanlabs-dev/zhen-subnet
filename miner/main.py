@@ -26,9 +26,19 @@ logger = logging.getLogger(__name__)
 DEFAULT_NETUID = int(os.environ.get("ZHEN_NETUID", "456"))
 DEFAULT_NETWORK = os.environ.get("ZHEN_NETWORK", "test")
 
+# Module-level metagraph reference for blacklist_fn (must be standalone per SDK v10)
+_metagraph: Any = None
+
 
 def blacklist_fn(synapse: CalibrationSynapse) -> Tuple[bool, str]:
-    """Determine whether to blacklist request. Accepts all for now."""
+    """Reject requests from hotkeys not registered on the subnet."""
+    if _metagraph is None:
+        return (False, "No metagraph available, accepting all")
+
+    requester_hotkey = synapse.dendrite.hotkey
+    if requester_hotkey not in _metagraph.hotkeys:
+        return (True, f"Hotkey {requester_hotkey[:16]} not registered on subnet")
+
     return (False, "")
 
 
@@ -77,6 +87,7 @@ class ZhenMiner:
         # Bittensor components
         self.wallet: Any = None
         self.subtensor: Any = None
+        self.metagraph: Any = None
         self.axon: Any = None
 
         if bt is not None:
@@ -84,10 +95,14 @@ class ZhenMiner:
 
     def _init_bittensor(self, wallet_name: str, wallet_hotkey: str) -> None:
         """Initialize Bittensor SDK v10 components and register axon handler."""
+        global _metagraph
+
         logger.info(f"Connecting to {self.network} (netuid={self.netuid})")
 
         self.wallet = bt.Wallet(name=wallet_name, hotkey=wallet_hotkey)
         self.subtensor = bt.Subtensor(network=self.network)
+        self.metagraph = self.subtensor.metagraph(netuid=self.netuid)
+        _metagraph = self.metagraph
         self.axon = bt.Axon(wallet=self.wallet, port=self.axon_port)
 
         self.axon.attach(
@@ -98,6 +113,20 @@ class ZhenMiner:
 
         logger.info(f"Wallet: {wallet_name}/{wallet_hotkey}")
         logger.info(f"Hotkey: {self.wallet.hotkey.ss58_address}")
+        logger.info(f"Metagraph: {len(self.metagraph.neurons)} neurons")
+
+    async def _sync_metagraph_loop(self) -> None:
+        """Periodically sync metagraph to keep blacklist current."""
+        global _metagraph
+
+        while True:
+            await asyncio.sleep(600)
+            try:
+                self.metagraph.sync()
+                _metagraph = self.metagraph
+                logger.info(f"Metagraph synced: {len(self.metagraph.neurons)} neurons")
+            except Exception as e:
+                logger.warning(f"Metagraph sync failed: {e}")
 
     async def run(self) -> None:
         """Start the miner axon and serve indefinitely."""
@@ -119,12 +148,16 @@ class ZhenMiner:
         logger.info(f"Calibration algorithm: bayesian (n_calls={self.n_calls})")
         logger.info("Waiting for challenges from validators...")
 
+        # Launch metagraph sync as background task
+        sync_task = asyncio.create_task(self._sync_metagraph_loop())
+
         try:
             while True:
                 await asyncio.sleep(60)
         except KeyboardInterrupt:
             logger.info("Miner shutting down")
         finally:
+            sync_task.cancel()
             self.axon.stop()
             logger.info("Axon stopped")
 

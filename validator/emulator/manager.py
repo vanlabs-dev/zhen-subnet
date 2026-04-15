@@ -284,3 +284,5 @@ class BOPTESTManager:
                 logger.info(f"BOPTEST testid {testid} stopped")
             except Exception as e:
                 logger.warning(f"Failed to stop BOPTEST testid {testid}: {e}")
+            # 8. Close the HTTP client to release connections
+            await self.client.close()

@@ -112,9 +112,7 @@ class ZhenValidator:
         self.dendrite = bt.Dendrite(wallet=self.wallet)
         self.metagraph = self.subtensor.metagraph(netuid=self.netuid)
         self.challenge_sender = ChallengeSender(self.wallet, self.dendrite)
-        self.weight_setter = WeightSetter(
-            self.subtensor, self.wallet, self.netuid, metagraph=self.metagraph
-        )
+        self.weight_setter = WeightSetter(self.subtensor, self.wallet, self.netuid, metagraph=self.metagraph)
 
         # Find our UID in the metagraph
         my_hotkey = self.wallet.hotkey.ss58_address
@@ -202,28 +200,31 @@ class ZhenValidator:
             return
 
         client = BOPTESTClient(self.boptest_url)
-        test_cases = self.manifest.get("test_cases", [])
-        logger.info(f"Pre-warming {len(test_cases)} BOPTEST test cases...")
+        try:
+            test_cases = self.manifest.get("test_cases", [])
+            logger.info(f"Pre-warming {len(test_cases)} BOPTEST test cases...")
 
-        for tc in test_cases:
-            tc_id = tc["id"]
-            for attempt in range(1, 3):
-                start = time.monotonic()
-                try:
-                    testid = await client.select_testcase(tc_id)
-                    await client.stop(testid)
-                    elapsed = time.monotonic() - start
-                    logger.info(f"  Warmed {tc_id} in {elapsed:.1f}s")
-                    break
-                except Exception as e:
-                    elapsed = time.monotonic() - start
-                    if attempt == 1:
-                        logger.warning(f"  {tc_id} failed ({elapsed:.1f}s): {e}. Retrying...")
-                        await asyncio.sleep(5)
-                    else:
-                        logger.warning(f"  {tc_id} failed on retry ({elapsed:.1f}s): {e}. Skipping.")
+            for tc in test_cases:
+                tc_id = tc["id"]
+                for attempt in range(1, 3):
+                    start = time.monotonic()
+                    try:
+                        testid = await client.select_testcase(tc_id)
+                        await client.stop(testid)
+                        elapsed = time.monotonic() - start
+                        logger.info(f"  Warmed {tc_id} in {elapsed:.1f}s")
+                        break
+                    except Exception as e:
+                        elapsed = time.monotonic() - start
+                        if attempt == 1:
+                            logger.warning(f"  {tc_id} failed ({elapsed:.1f}s): {e}. Retrying...")
+                            await asyncio.sleep(5)
+                        else:
+                            logger.warning(f"  {tc_id} failed on retry ({elapsed:.1f}s): {e}. Skipping.")
 
-        logger.info("BOPTEST warmup complete")
+            logger.info("BOPTEST warmup complete")
+        finally:
+            await client.close()
 
     async def run(self) -> None:
         """Main loop: run rounds at tempo intervals."""
