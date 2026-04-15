@@ -17,6 +17,7 @@ else:
 
 import time
 
+import protocol
 from protocol.synapse import CalibrationSynapse
 from validator.network.challenge_sender import ChallengeSender
 from validator.network.result_receiver import ResponseParser
@@ -111,7 +112,9 @@ class ZhenValidator:
         self.dendrite = bt.Dendrite(wallet=self.wallet)
         self.metagraph = self.subtensor.metagraph(netuid=self.netuid)
         self.challenge_sender = ChallengeSender(self.wallet, self.dendrite)
-        self.weight_setter = WeightSetter(self.subtensor, self.wallet, self.netuid)
+        self.weight_setter = WeightSetter(
+            self.subtensor, self.wallet, self.netuid, metagraph=self.metagraph
+        )
 
         # Find our UID in the metagraph
         my_hotkey = self.wallet.hotkey.ss58_address
@@ -230,6 +233,7 @@ class ZhenValidator:
             logger.info(f"BOPTEST URL: {self.boptest_url}")
             await self._warmup_boptest()
         logger.info(f"Manifest version: {self.manifest['version']}")
+        logger.info(f"Spec version: {protocol.__spec_version__}")
 
         while True:
             try:
