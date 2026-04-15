@@ -7,6 +7,7 @@ import asyncio
 import importlib.util
 import logging
 import os
+import signal
 from pathlib import Path
 from typing import Any
 
@@ -90,6 +91,7 @@ class ZhenValidator:
         self.response_parser = ResponseParser()
         self.health = HealthServer(port=health_port)
         self.round_count = 0
+        self._shutdown_requested = False
 
         # Bittensor components
         self.wallet: Any = None
@@ -226,8 +228,22 @@ class ZhenValidator:
         finally:
             await client.close()
 
+    async def _shutdown(self) -> None:
+        """Signal handler: request graceful shutdown after current round completes."""
+        logger.info("Shutdown signal received, finishing current round...")
+        self._shutdown_requested = True
+
     async def run(self) -> None:
         """Main loop: run rounds at tempo intervals."""
+        # Register signal handlers for graceful shutdown
+        try:
+            loop = asyncio.get_event_loop()
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                loop.add_signal_handler(sig, lambda: asyncio.create_task(self._shutdown()))
+        except NotImplementedError:
+            # Windows: signal handlers not supported in asyncio, rely on KeyboardInterrupt
+            pass
+
         logger.info(f"Starting ZhenValidator (netuid={self.netuid}, tempo={self.tempo_seconds}s)")
         logger.info(f"Local mode: {self.local_mode}")
         if not self.local_mode:
@@ -248,8 +264,17 @@ class ZhenValidator:
             finally:
                 self.health.record_round(success)
 
+            if self._shutdown_requested:
+                break
+
             logger.info(f"Sleeping {self.tempo_seconds}s until next round...")
-            await asyncio.sleep(self.tempo_seconds)
+            try:
+                await asyncio.sleep(self.tempo_seconds)
+            except asyncio.CancelledError:
+                break
+
+        logger.info("Validator shutting down...")
+        logger.info("Shutdown complete")
 
     async def run_round(self) -> dict[str, Any]:
         """Run a single calibration round.
@@ -385,8 +410,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--boptest-url", type=str, default="http://localhost:8000", help="BOPTEST service URL")
     parser.add_argument("--health-port", type=int, default=8080, help="Health check HTTP port")
     parser.add_argument(
-        "--log-level", type=str, default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging level",
+        "--log-level",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level",
     )
     return parser.parse_args()
 

@@ -5,6 +5,7 @@ import asyncio
 import importlib.util
 import logging
 import os
+import signal
 from typing import Any, Tuple
 
 if importlib.util.find_spec("bittensor"):
@@ -85,6 +86,7 @@ class ZhenMiner:
         self.subtensor: Any = None
         self.metagraph: Any = None
         self.axon: Any = None
+        self._shutdown_requested = False
 
         if bt is not None:
             self._init_bittensor(wallet_name, wallet_hotkey)
@@ -111,12 +113,19 @@ class ZhenMiner:
         logger.info(f"Hotkey: {self.wallet.hotkey.ss58_address}")
         logger.info(f"Metagraph: {len(self.metagraph.neurons)} neurons")
 
+    async def _shutdown(self) -> None:
+        """Signal handler: request graceful shutdown."""
+        logger.info("Shutdown signal received...")
+        self._shutdown_requested = True
+
     async def _sync_metagraph_loop(self) -> None:
         """Periodically sync metagraph to keep blacklist current."""
         global _metagraph
 
-        while True:
+        while not self._shutdown_requested:
             await asyncio.sleep(600)
+            if self._shutdown_requested:
+                break
             try:
                 self.metagraph.sync()
                 _metagraph = self.metagraph
@@ -134,6 +143,15 @@ class ZhenMiner:
             logger.error("Cannot run miner without subtensor connection")
             return
 
+        # Register signal handlers for graceful shutdown
+        try:
+            loop = asyncio.get_event_loop()
+            for sig in (signal.SIGTERM, signal.SIGINT):
+                loop.add_signal_handler(sig, lambda: asyncio.create_task(self._shutdown()))
+        except NotImplementedError:
+            # Windows: signal handlers not supported in asyncio, rely on KeyboardInterrupt
+            pass
+
         logger.info(f"Starting ZhenMiner (netuid={self.netuid}, port={self.axon_port})")
 
         # Serve axon on the network
@@ -148,14 +166,15 @@ class ZhenMiner:
         sync_task = asyncio.create_task(self._sync_metagraph_loop())
 
         try:
-            while True:
+            while not self._shutdown_requested:
                 await asyncio.sleep(60)
         except KeyboardInterrupt:
-            logger.info("Miner shutting down")
+            logger.info("KeyboardInterrupt received")
         finally:
+            logger.info("Miner shutting down...")
             sync_task.cancel()
             self.axon.stop()
-            logger.info("Axon stopped")
+            logger.info("Axon stopped, shutdown complete")
 
 
 def parse_args() -> argparse.Namespace:
@@ -169,8 +188,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-calls", type=int, default=100, help="Optimization iterations")
     parser.add_argument("--axon-port", type=int, default=8091, help="Axon server port")
     parser.add_argument(
-        "--log-level", type=str, default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging level",
+        "--log-level",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Logging level",
     )
     return parser.parse_args()
 
