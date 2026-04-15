@@ -15,12 +15,8 @@ else:
 from miner.calibration.engine import CalibrationEngine
 from miner.network.axon_handler import CalibrationHandler
 from protocol.synapse import CalibrationSynapse
+from validator.utils.logging import setup_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger(__name__)
 
 DEFAULT_NETUID = int(os.environ.get("ZHEN_NETUID", "456"))
@@ -172,11 +168,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--algorithm", type=str, default="bayesian", help="Calibration algorithm")
     parser.add_argument("--n-calls", type=int, default=100, help="Optimization iterations")
     parser.add_argument("--axon-port", type=int, default=8091, help="Axon server port")
+    parser.add_argument(
+        "--log-level", type=str, default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging level",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
+    setup_logging("miner", args.log_level)
     miner = ZhenMiner(
         netuid=args.netuid,
         network=args.network,

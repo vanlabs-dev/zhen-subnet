@@ -27,14 +27,10 @@ from validator.round import split_generator, test_case_selector
 from validator.round.orchestrator import RoundOrchestrator
 from validator.scoring.ema import EMATracker
 from validator.scoring.engine import ScoringEngine
+from validator.utils.logging import setup_logging
 from validator.verification.engine import VerificationEngine
 from validator.weights.setter import WeightSetter
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
 logger = logging.getLogger(__name__)
 
 DEFAULT_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "registry" / "manifest.json"
@@ -388,11 +384,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-local-mode", action="store_false", dest="local_mode", help="Use BOPTEST for ground truth")
     parser.add_argument("--boptest-url", type=str, default="http://localhost:8000", help="BOPTEST service URL")
     parser.add_argument("--health-port", type=int, default=8080, help="Health check HTTP port")
+    parser.add_argument(
+        "--log-level", type=str, default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Logging level",
+    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
+    setup_logging("validator", args.log_level)
     validator = ZhenValidator(
         netuid=args.netuid,
         network=args.network,

@@ -48,11 +48,7 @@ class HealthServer:
             "uptime_seconds": int(uptime),
             "rounds_completed": self.round_count,
             "last_round_status": self.last_round_status,
-            "seconds_since_last_round": (
-                int(time.time() - self.last_round_time)
-                if self.last_round_time > 0
-                else None
-            ),
+            "seconds_since_last_round": (int(time.time() - self.last_round_time) if self.last_round_time > 0 else None),
         }
         return web.Response(
             text=json.dumps(status),
