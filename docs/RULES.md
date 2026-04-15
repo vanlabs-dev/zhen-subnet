@@ -21,6 +21,7 @@ Zhen is a competitive calibration subnet. Miners compete to produce the most acc
 - Submitting pre-computed "lookup table" results that bypass actual calibration (validators use randomized train/test splits to prevent this)
 - Attacking or interfering with other miners' axon endpoints
 - Exploiting validator implementation bugs instead of reporting them
+- Submitting unmodified default parameters from the test case configuration (detected and rejected automatically)
 
 ## How Validators Prevent Gaming
 
@@ -46,9 +47,17 @@ Validators re-run the RC model with the miner's returned parameters to verify re
 
 Single-round manipulation is dampened by exponential moving average tracking (alpha=0.3). Consistent performance over time is what matters.
 
+### 6. Default parameter detection
+
+Submissions where all parameters are within 0.1% of the config defaults are automatically rejected. This prevents miners from skipping calibration and submitting known defaults.
+
+### 7. Absent miner decay
+
+Miners who miss rounds have their EMA score decayed exponentially. Persistent absence results in weight removal, preventing offline miners from holding stale emissions.
+
 ## Scoring and Weights
 
-- Weights are set once per tempo (~72 minutes with tempo=360)
+- Weights are set once per tempo (360 blocks, approximately 72 minutes)
 - Scores are based solely on ASHRAE-standard metrics (see [SCORING.md](SCORING.md))
 - The validator applies no subjective judgment; scoring is fully deterministic
 - All miners receive the same challenge in each round
@@ -56,7 +65,7 @@ Single-round manipulation is dampened by exponential moving average tracking (al
 
 ## Immunity Period
 
-- New miners receive an immunity period after registration (configurable by subnet owner, currently ~16.7 hours on Zhen (5000 blocks at 12 seconds per block))
+- New miners receive an immunity period after registration (configurable by subnet owner)
 - During immunity, your neuron cannot be deregistered by lower-performing newcomers
 - Use this time to verify your miner is receiving and responding to challenges correctly
 

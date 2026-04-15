@@ -75,6 +75,14 @@ Each test case directory contains three files: `config.json`, `schedules.json`, 
 python -m miner.main --netuid 456 --network test
 ```
 
+### Alternative: Docker
+
+```bash
+docker compose --profile miner up -d
+```
+
+Override defaults with CLI args in docker-compose.yml or pass environment variables. See env.example for options.
+
 ## CLI arguments
 
 | Argument | Type | Default | Description |
@@ -86,6 +94,7 @@ python -m miner.main --netuid 456 --network test
 | `--algorithm` | str | `bayesian` | Calibration algorithm |
 | `--n-calls` | int | 100 | Number of optimization iterations per round |
 | `--axon-port` | int | 8091 | Port for the axon server to listen on |
+| `--log-level` | str | `INFO` | Logging level: DEBUG, INFO, WARNING, ERROR |
 
 ### Environment variables
 
@@ -98,7 +107,7 @@ python -m miner.main --netuid 456 --network test
 
 1. Validator selects a test case and generates training/test data splits from the complex emulator.
 2. Validator sends a `CalibrationSynapse` to your miner's axon containing: test case ID, training data (time-series of temperatures), parameter names and bounds, and simulation budget.
-3. Your miner runs Bayesian optimization (scikit-optimize) to find RC network parameters that minimize CVRMSE on the training data.
+3. Your miner validates the requesting hotkey is a registered validator (blacklist check), then runs Bayesian optimization (scikit-optimize) to find RC network parameters that minimize CVRMSE on the training data.
 4. Miner returns calibrated parameters, simulation count, and training CVRMSE to the validator.
 5. Validator re-runs the RC model with your parameters on held-out test data.
 6. Validator scores using ASHRAE metrics: CVRMSE (50%), NMBE (25%), R-squared (15%), convergence efficiency (10%).
@@ -136,6 +145,8 @@ Key log messages to watch for:
 | `Calibration complete: cvrmse=X.XXXX` | Your optimization result. Lower is better. |
 | `Calibration failed: ...` | Something went wrong. Check the error details. |
 
+Log files are written to `~/.zhen/logs/miner.log` with daily rotation and 14-day retention.
+
 ## Troubleshooting
 
 **"No such file or directory: ~/.zhen/test_cases/..."**
@@ -163,6 +174,9 @@ Ensure all dependency groups are installed:
 ```bash
 uv sync --all-groups
 ```
+
+**Miner rejecting all challenges with "not registered on subnet"**
+The miner verifies that the requesting validator is registered on the metagraph. If you see this, check that the validator is properly registered. The miner syncs the metagraph every 10 minutes.
 
 ## Rules
 

@@ -102,6 +102,8 @@ python -m validator.main --netuid 456 --network test
 
 Local mode is the default (`--local-mode` is enabled by default). This is the recommended mode for testnet.
 
+Note: In local mode, ground truth is generated using the RC model with default parameters. This is a testnet convenience. For production, use BOPTEST mode (`--no-local-mode`) which generates ground truth from the complex EnergyPlus emulator.
+
 #### Full mode (BOPTEST ground truth)
 
 For production validation with BOPTEST emulators providing ground truth. BOPTEST must be running via docker-compose from the project1-boptest repository. The validator includes automatic health checking and pre-warming of test cases.
@@ -121,6 +123,8 @@ python -m validator.main --netuid 456 --network test --no-local-mode --boptest-u
 | `--local-mode` | flag | `True` | Use RC network model as ground truth instead of BOPTEST |
 | `--no-local-mode` | flag | | Use BOPTEST emulator for ground truth generation |
 | `--boptest-url` | str | `http://localhost:8000` | BOPTEST service URL (only used with `--no-local-mode`) |
+| `--health-port` | int | 8080 | HTTP health check port |
+| `--log-level` | str | `INFO` | Logging level: DEBUG, INFO, WARNING, ERROR |
 
 ### Environment variables
 
@@ -136,6 +140,7 @@ python -m validator.main --netuid 456 --network test --no-local-mode --boptest-u
 | `TEMPO_BLOCKS` | 360 | Blocks per tempo |
 | `BLOCK_TIME_SECONDS` | 12 | Seconds per block |
 | `DEFAULT_TEMPO_SECONDS` | 4320 | Seconds between rounds (~72 minutes) |
+| `WEIGHT_TIMEOUT_SECONDS` | 120 | Max seconds for chain weight submission |
 
 ## How a Validation Round Works
 
@@ -203,6 +208,38 @@ Key log messages from the validator:
 | `Weights set on chain successfully` | Weights committed to chain |
 | `=== round-N complete ===` | Round finished |
 | `Sleeping Ns until next round...` | Waiting for next tempo period |
+
+## Health Monitoring
+
+The validator exposes an HTTP health endpoint for external monitoring:
+
+```bash
+curl http://localhost:8080/health
+```
+
+Returns JSON with uptime, round count, and last round status. Configure the port with `--health-port`.
+
+## State Persistence
+
+The validator saves EMA scores and round count to `~/.zhen/validator_state.json` after each successful round. On restart, it resumes from the last known state. This prevents miners from losing accumulated reputation after a validator restart.
+
+## Alerting
+
+Set the `ZHEN_ALERT_WEBHOOK` environment variable to receive notifications on round failures and startup events. Supports Discord and Slack webhook URLs.
+
+```bash
+export ZHEN_ALERT_WEBHOOK=https://discord.com/api/webhooks/your/url
+```
+
+## PM2 Deployment
+
+For production, use PM2 with the provided scripts:
+
+```bash
+./scripts/start_validator.sh
+```
+
+This starts the validator and an auto-updater that checks for code updates every 5 minutes.
 
 ## Troubleshooting
 

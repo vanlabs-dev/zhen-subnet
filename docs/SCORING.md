@@ -159,3 +159,11 @@ composite = 0.50 * 0.000 + 0.25 * 0.000 + 0.15 * 0.600 + 0.10 * 0.100
 - Beating the ASHRAE thresholds (CVRMSE < 0.30, |NMBE| < 0.10) is the minimum viable performance. Going well below earns proportionally more.
 - Convergence efficiency matters at the margin (10%). If two miners achieve similar accuracy, the one using fewer simulations scores higher.
 - Consistency across rounds matters due to EMA smoothing. A miner scoring 0.7 every round will outrank one alternating between 0.9 and 0.3.
+
+## EMA Decay
+
+Miners who do not submit in a round have their EMA score decayed by (1 - alpha) per round. After approximately 10 consecutive absences, the miner's weight drops below the pruning threshold and is removed from the weight vector. This prevents offline miners from holding stale weight.
+
+## Anti-Gaming Protections
+
+Submissions where all parameters are within 0.1% of config defaults are rejected. Miners must run actual calibration. Additionally, validators use deterministic but unpredictable train/test splits, and held-out test data is never sent to miners.
