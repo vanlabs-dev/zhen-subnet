@@ -83,8 +83,10 @@ btcli subnet register --netuid 456 --network test --wallet.name zhen-validator -
 Validators need local copies of test case data:
 
 ```bash
-mkdir -p ~/.zhen/test_cases/bestest_hydronic_heat_pump
-cp registry/test_cases/bestest_hydronic_heat_pump/*.json ~/.zhen/test_cases/bestest_hydronic_heat_pump/
+for tc in bestest_hydronic_heat_pump bestest_air bestest_hydronic; do
+  mkdir -p ~/.zhen/test_cases/$tc
+  cp registry/test_cases/$tc/*.json ~/.zhen/test_cases/$tc/
+done
 ```
 
 The test case directory contains three files: `config.json`, `schedules.json`, and `weather.json`.
@@ -103,9 +105,11 @@ Local mode is the default (`--local-mode` is enabled by default). This is the re
 
 #### Full mode (BOPTEST ground truth)
 
-For production validation with BOPTEST emulators providing ground truth. Requires Docker running with the BOPTEST service accessible at `http://localhost:8000`.
+For production validation with BOPTEST emulators providing ground truth. BOPTEST must be running via docker-compose from the project1-boptest repository. The validator includes automatic health checking and pre-warming of test cases.
 
-Note: Full BOPTEST mode is not yet available via CLI flags. The validator currently defaults to local mode for testnet.
+```bash
+python -m validator.main --netuid 456 --network test --no-local-mode --boptest-url http://localhost:8000
+```
 
 ## CLI Arguments
 
@@ -116,6 +120,8 @@ Note: Full BOPTEST mode is not yet available via CLI flags. The validator curren
 | `--wallet-name` | str | `zhen-validator` | Wallet name |
 | `--wallet-hotkey` | str | `default` | Wallet hotkey |
 | `--local-mode` | flag | `True` | Use RC network model as ground truth instead of BOPTEST |
+| `--no-local-mode` | flag | | Use BOPTEST emulator for ground truth generation |
+| `--boptest-url` | str | `http://localhost:8000` | BOPTEST service URL (only used with `--no-local-mode`) |
 
 ### Environment variables
 
@@ -161,11 +167,11 @@ BOPTEST runs as a Docker service on port 8000 (default). For detailed setup inst
 
 ### Supported test cases
 
-Currently available:
+Currently available (3 test cases, deterministic rotation per round):
 
-- `bestest_hydronic_heat_pump`: BESTEST reference building with hydronic heating system (Brussels climate)
-
-Additional test cases will be added as the subnet expands.
+- `bestest_hydronic_heat_pump`: BESTEST reference building with hydronic heat pump (Brussels climate)
+- `bestest_air`: BESTEST reference building with air-based heating system (Brussels climate)
+- `bestest_hydronic`: BESTEST reference building with hydronic heating (Brussels climate)
 
 ## Scoring Reference
 

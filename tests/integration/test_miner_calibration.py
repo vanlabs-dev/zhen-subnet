@@ -164,7 +164,11 @@ async def test_end_to_end_round_with_miner() -> None:
     sim_budget = verification_config.get("simulation_budget", 1000)
 
     verified = await verification_engine.verify_all(
-        submissions, verification_config, test_period, held_out_data, sim_budget=sim_budget,
+        submissions,
+        verification_config,
+        test_period,
+        held_out_data,
+        sim_budget=sim_budget,
     )
     scores = scoring_engine.compute(verified, sim_budget=sim_budget)
     raw_scores = scoring_engine.compute_raw(verified, sim_budget=sim_budget)
@@ -174,8 +178,12 @@ async def test_end_to_end_round_with_miner() -> None:
     breakdowns: dict[int, dict[str, Any]] = {}
     for uid, v in verified.items():
         breakdowns[uid] = breakdown.generate(
-            uid=uid, verified=v, composite=raw_scores.get(uid, 0.0),
-            weights=weights, round_id=round_id, sim_budget=sim_budget,
+            uid=uid,
+            verified=v,
+            composite=raw_scores.get(uid, 0.0),
+            weights=weights,
+            round_id=round_id,
+            sim_budget=sim_budget,
         )
 
     print(f"\n{'=' * 60}")
