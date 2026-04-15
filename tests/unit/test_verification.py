@@ -60,6 +60,16 @@ def _make_held_out_data() -> dict[str, list[float]]:
     return result.get_outputs(["zone_air_temperature_C", "total_heating_energy_kWh"])
 
 
+NEAR_DEFAULT_PARAMS = {
+    "wall_r_value": 3.5 * 1.05,
+    "roof_r_value": 5.0 * 1.05,
+    "zone_capacitance": 200000.0 * 1.05,
+    "infiltration_ach": 0.5 * 1.05,
+    "hvac_cop": 3.5 * 1.05,
+    "solar_gain_factor": 0.4 * 1.05,
+}
+
+
 @pytest.mark.asyncio
 async def test_verify_valid_params() -> None:
     """Valid params within bounds should produce scores (not fail)."""
@@ -67,16 +77,15 @@ async def test_verify_valid_params() -> None:
     held_out = _make_held_out_data()
 
     submissions = {
-        0: {"calibrated_params": DEFAULT_PARAMS, "simulations_used": 100},
+        0: {"calibrated_params": NEAR_DEFAULT_PARAMS, "simulations_used": 100},
     }
 
     verified = await engine.verify_all(submissions, TEST_CASE, TEST_PERIOD, held_out)
     assert 0 in verified
     v = verified[0]
     assert v.reason == ""
-    # Perfect match should have low CVRMSE and high R-squared
-    assert v.cvrmse < 0.01
-    assert v.r_squared > 0.99
+    # Close to defaults should have low CVRMSE
+    assert v.cvrmse < 0.5
 
 
 @pytest.mark.asyncio
@@ -104,8 +113,8 @@ async def test_verify_multiple_miners() -> None:
     engine = VerificationEngine()
     held_out = _make_held_out_data()
 
-    # Miner 0: exact defaults (best)
-    # Miner 1: slightly off
+    # Miner 0: near defaults (best, passes anti-gaming check at 5% off)
+    # Miner 1: moderately off
     # Miner 2: far off but within bounds
     slightly_off = DEFAULT_PARAMS.copy()
     slightly_off["wall_r_value"] = 4.5
@@ -117,7 +126,7 @@ async def test_verify_multiple_miners() -> None:
     far_off["infiltration_ach"] = 1.8
 
     submissions = {
-        0: {"calibrated_params": DEFAULT_PARAMS, "simulations_used": 100},
+        0: {"calibrated_params": NEAR_DEFAULT_PARAMS, "simulations_used": 100},
         1: {"calibrated_params": slightly_off, "simulations_used": 200},
         2: {"calibrated_params": far_off, "simulations_used": 500},
     }
@@ -125,9 +134,93 @@ async def test_verify_multiple_miners() -> None:
     verified = await engine.verify_all(submissions, TEST_CASE, TEST_PERIOD, held_out)
     assert len(verified) == 3
 
+    # All should have passed verification (no DEFAULT_PARAMS rejection)
+    for uid in [0, 1, 2]:
+        assert verified[uid].reason == "", f"Miner {uid} rejected: {verified[uid].reason}"
+
     # Miner 0 should have best CVRMSE (lowest)
     assert verified[0].cvrmse < verified[1].cvrmse
     assert verified[1].cvrmse < verified[2].cvrmse
+
+
+@pytest.mark.asyncio
+async def test_rejects_exact_defaults() -> None:
+    """Submitting exact default params should be rejected as DEFAULT_PARAMS."""
+    engine = VerificationEngine()
+
+    submissions = {
+        0: {"calibrated_params": DEFAULT_PARAMS.copy(), "simulations_used": 100},
+    }
+
+    # held_out_data doesn't matter since rejection happens before simulation
+    held_out: dict[str, list[float]] = {"zone_air_temperature_C": [], "total_heating_energy_kWh": []}
+    verified = await engine.verify_all(submissions, TEST_CASE, TEST_PERIOD, held_out)
+    assert 0 in verified
+    assert verified[0].reason == "DEFAULT_PARAMS"
+
+
+@pytest.mark.asyncio
+async def test_rejects_near_defaults() -> None:
+    """Params within 0.1% of defaults should be rejected."""
+    engine = VerificationEngine()
+
+    near_defaults = DEFAULT_PARAMS.copy()
+    # Add tiny perturbation (0.01% = well within 0.1% threshold)
+    near_defaults["wall_r_value"] = 3.5 * 1.0001
+    near_defaults["hvac_cop"] = 3.5 * 0.9999
+
+    submissions = {
+        0: {"calibrated_params": near_defaults, "simulations_used": 50},
+    }
+
+    held_out: dict[str, list[float]] = {"zone_air_temperature_C": [], "total_heating_energy_kWh": []}
+    verified = await engine.verify_all(submissions, TEST_CASE, TEST_PERIOD, held_out)
+    assert 0 in verified
+    assert verified[0].reason == "DEFAULT_PARAMS"
+
+
+@pytest.mark.asyncio
+async def test_accepts_different_params() -> None:
+    """Params 5% different from defaults should be accepted (not rejected)."""
+    engine = VerificationEngine()
+    held_out = _make_held_out_data()
+
+    different_params = DEFAULT_PARAMS.copy()
+    different_params["wall_r_value"] = 3.5 * 1.05  # 5% higher
+    different_params["hvac_cop"] = 3.5 * 0.95  # 5% lower
+
+    submissions = {
+        0: {"calibrated_params": different_params, "simulations_used": 100},
+    }
+
+    verified = await engine.verify_all(submissions, TEST_CASE, TEST_PERIOD, held_out)
+    assert 0 in verified
+    # Should NOT be rejected as DEFAULT_PARAMS
+    assert verified[0].reason != "DEFAULT_PARAMS"
+
+
+@pytest.mark.asyncio
+async def test_accepts_when_no_defaults() -> None:
+    """If test_case has no defaults key, skip the check."""
+    engine = VerificationEngine()
+
+    test_case_no_defaults = {
+        "id": "bestest_hydronic_heat_pump",
+        "parameter_bounds": TEST_CASE["parameter_bounds"],
+        "scoring_outputs": TEST_CASE["scoring_outputs"],
+        "simulation_budget": 1000,
+        # No "defaults" key
+    }
+
+    held_out = _make_held_out_data()
+    submissions = {
+        0: {"calibrated_params": DEFAULT_PARAMS.copy(), "simulations_used": 100},
+    }
+
+    verified = await engine.verify_all(submissions, test_case_no_defaults, TEST_PERIOD, held_out)
+    assert 0 in verified
+    # Without defaults in test_case, should NOT be rejected as DEFAULT_PARAMS
+    assert verified[0].reason != "DEFAULT_PARAMS"
 
 
 @pytest.mark.asyncio

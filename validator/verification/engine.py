@@ -127,6 +127,27 @@ class VerificationEngine:
                     detail=f"{param}={value} outside bounds [{bounds[0]}, {bounds[1]}]",
                 )
 
+        # Check for near-default parameter submission (anti-gaming)
+        config_defaults: dict[str, float] = test_case.get("defaults", {})
+        if config_defaults:
+            all_near_default = True
+            for param, value in calibrated_params.items():
+                default_val = config_defaults.get(param)
+                if default_val is not None and default_val != 0:
+                    relative_diff = abs(value - default_val) / abs(default_val)
+                    if relative_diff > 0.001:
+                        all_near_default = False
+                        break
+                elif default_val == 0:
+                    if abs(value) > 1e-6:
+                        all_near_default = False
+                        break
+            if all_near_default:
+                return VerifiedResult(
+                    reason="DEFAULT_PARAMS",
+                    detail="Submitted parameters are within 0.1% of config defaults. Run actual calibration.",
+                )
+
         # Load test case config and run simplified model
         config = self._load_config(test_case["id"])
         rc = RCNetworkBackend(config, calibrated_params)

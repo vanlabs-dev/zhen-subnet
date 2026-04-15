@@ -171,10 +171,7 @@ class WeightSetter:
             )
             return result
         except asyncio.TimeoutError:
-            logger.error(
-                f"Weight setting timed out after {self.WEIGHT_TIMEOUT_SECONDS}s "
-                f"(chain may be congested)"
-            )
+            logger.error(f"Weight setting timed out after {self.WEIGHT_TIMEOUT_SECONDS}s (chain may be congested)")
             return False
         except Exception as e:
             logger.error(f"Failed to set weights: {e}")
