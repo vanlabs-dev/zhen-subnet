@@ -14,8 +14,6 @@ Bittensor subnet for decentralized digital twin calibration. Domain-agnostic pla
 - Simulation backends: simulation/
 - Synapse definitions: protocol/
 - Test case registry: registry/
-- Local eval harness: eval/
-- Dashboard: dashboard/
 - Tests: tests/
 - Agent definitions: agents/AGENTS.md
 
