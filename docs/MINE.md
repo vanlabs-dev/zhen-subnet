@@ -33,8 +33,7 @@ Miners receive calibration challenges from validators containing training data f
 ```bash
 git clone https://github.com/vanlabs-dev/zhen-subnet.git
 cd zhen-subnet
-pip install -e ".[bittensor]"
-pip install scikit-optimize
+uv sync --all-groups
 ```
 
 Note: The repo is currently private during testnet. Contact the team for access.
@@ -42,7 +41,7 @@ Note: The repo is currently private during testnet. Contact the team for access.
 ### 2. Create wallet
 
 ```bash
-btcli wallet create --wallet.name zhen-miner --wallet.hotkey default
+btcli wallet create --wallet-name zhen-miner --wallet-hotkey default
 ```
 
 Save your mnemonic securely.
@@ -54,7 +53,7 @@ Request testnet TAO in the Bittensor Discord `#testnet-faucet` channel. You need
 ### 4. Register on subnet
 
 ```bash
-btcli subnet register --netuid 456 --network test --wallet.name zhen-miner --wallet.hotkey default
+btcli subnet register --netuid 456 --network test --wallet-name zhen-miner --wallet-hotkey default
 ```
 
 ### 5. Set up test cases
@@ -62,11 +61,13 @@ btcli subnet register --netuid 456 --network test --wallet.name zhen-miner --wal
 Miners need local copies of test case data files for the RC network simulation:
 
 ```bash
-mkdir -p ~/.zhen/test_cases/bestest_hydronic_heat_pump
-cp registry/test_cases/bestest_hydronic_heat_pump/*.json ~/.zhen/test_cases/bestest_hydronic_heat_pump/
+for tc in bestest_hydronic_heat_pump bestest_air bestest_hydronic; do
+  mkdir -p ~/.zhen/test_cases/$tc
+  cp registry/test_cases/$tc/*.json ~/.zhen/test_cases/$tc/
+done
 ```
 
-The test case directory contains three files: `config.json`, `schedules.json`, and `weather.json`.
+Each test case directory contains three files: `config.json`, `schedules.json`, and `weather.json`.
 
 ### 6. Start mining
 
@@ -84,6 +85,7 @@ python -m miner.main --netuid 456 --network test
 | `--wallet-hotkey` | str | `default` | Wallet hotkey |
 | `--algorithm` | str | `bayesian` | Calibration algorithm |
 | `--n-calls` | int | 100 | Number of optimization iterations per round |
+| `--axon-port` | int | 8091 | Port for the axon server to listen on |
 
 ### Environment variables
 
@@ -150,16 +152,16 @@ btcli subnets metagraph --netuid 456 --network test
 Check your wallet balance:
 
 ```bash
-btcli wallet balance --wallet.name zhen-miner --network test
+btcli wallet balance --wallet-name zhen-miner --network test
 ```
 
 You need approximately 2 TAO for registration.
 
 **scikit-optimize import errors**
-Install it separately:
+Ensure all dependency groups are installed:
 
 ```bash
-pip install scikit-optimize
+uv sync --all-groups
 ```
 
 ## Rules

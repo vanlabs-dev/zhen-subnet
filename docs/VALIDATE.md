@@ -42,8 +42,7 @@ btcli subnets hyperparameters --netuid 456 --network test
 ```bash
 git clone https://github.com/vanlabs-dev/zhen-subnet.git
 cd zhen-subnet
-pip install -e ".[bittensor]"
-pip install scikit-optimize
+uv sync --all-groups
 ```
 
 Note: The repo is currently private during testnet. Contact the team for access.
@@ -63,7 +62,7 @@ Docker is only required for full BOPTEST mode. Local mode (the current default) 
 ### 3. Create wallet
 
 ```bash
-btcli wallet create --wallet.name zhen-validator --wallet.hotkey default
+btcli wallet create --wallet-name zhen-validator --wallet-hotkey default
 ```
 
 Save your mnemonic securely.
@@ -75,7 +74,7 @@ Request testnet TAO in the Bittensor Discord `#testnet-faucet` channel. You need
 ### 5. Register on subnet
 
 ```bash
-btcli subnet register --netuid 456 --network test --wallet.name zhen-validator --wallet.hotkey default
+btcli subnet register --netuid 456 --network test --wallet-name zhen-validator --wallet-hotkey default
 ```
 
 ### 6. Set up test cases
@@ -221,7 +220,7 @@ btcli subnets metagraph --netuid 456 --network test
 Insufficient stake or rate-limited by the chain. Check your wallet balance and the `weights_rate_limit` hyperparameter:
 
 ```bash
-btcli wallet balance --wallet.name zhen-validator --network test
+btcli wallet balance --wallet-name zhen-validator --network test
 btcli subnets hyperparameters --netuid 456 --network test
 ```
 
