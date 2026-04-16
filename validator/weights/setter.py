@@ -80,9 +80,7 @@ class WeightSetter:
         self.netuid = netuid
         self.metagraph = metagraph
 
-    def _set_weights_sync(
-        self, uids_arr: npt.NDArray[np.int64], weights_arr: npt.NDArray[np.float32]
-    ) -> bool:
+    def _set_weights_sync(self, uids_arr: npt.NDArray[np.int64], weights_arr: npt.NDArray[np.float32]) -> bool:
         """Synchronous weight-setting call (runs in thread executor).
 
         Processes weights, submits to chain, and handles the response.
@@ -174,10 +172,7 @@ class WeightSetter:
             )
             return result
         except asyncio.TimeoutError:
-            logger.error(
-                f"Weight setting timed out after {self.WEIGHT_TIMEOUT_SECONDS}s "
-                f"(chain may be congested)"
-            )
+            logger.error(f"Weight setting timed out after {self.WEIGHT_TIMEOUT_SECONDS}s (chain may be congested)")
             return False
         except Exception as e:
             logger.error(f"Failed to set weights: {e}")
@@ -213,9 +208,7 @@ class WeightSetter:
                 return {}
 
             normalized_stakes = valid_stakes / total_stake
-            stake_weighted_avg: npt.NDArray[np.floating[Any]] = np.dot(
-                normalized_stakes, valid_weights
-            )
+            stake_weighted_avg: npt.NDArray[np.floating[Any]] = np.dot(normalized_stakes, valid_weights)
 
             uids = self.metagraph.uids.tolist()
             weights_list = stake_weighted_avg.tolist()

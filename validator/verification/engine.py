@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -156,6 +157,15 @@ class VerificationEngine:
         # Extract scoring outputs
         scoring_outputs = test_case["scoring_outputs"]
         predicted_values = predictions.get_outputs(scoring_outputs)
+
+        # Guard against NaN/Inf from simulation (e.g., division by near-zero parameters)
+        for key, values in predicted_values.items():
+            if not all(math.isfinite(v) for v in values):
+                return VerifiedResult(
+                    reason="SIMULATION_NAN",
+                    detail=f"RC model produced non-finite values in {key}",
+                )
+
         measured_values = {k: held_out_data[k] for k in scoring_outputs if k in held_out_data}
 
         # Compute metrics

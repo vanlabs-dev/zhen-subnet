@@ -6,9 +6,12 @@ Tests parameter validation, scoring differentiation, and timeout handling.
 from __future__ import annotations
 
 import asyncio
+import math
+from unittest.mock import patch
 
 import pytest
 
+from simulation.rc_network import SimulationResult
 from validator.scoring.engine import VerifiedResult
 from validator.verification.engine import VerificationEngine
 
@@ -246,3 +249,67 @@ async def test_verify_timeout() -> None:
     verified = await engine.verify_all(submissions, TEST_CASE, TEST_PERIOD, held_out)
     assert 0 in verified
     assert verified[0].reason == "SIMULATION_TIMEOUT"
+
+
+@pytest.mark.asyncio
+async def test_rejects_nan_simulation_output() -> None:
+    """Submissions producing NaN/Inf in the RC model should be rejected."""
+    engine = VerificationEngine()
+
+    nan_result = SimulationResult(outputs={
+        "zone_air_temperature_C": [20.0, float("nan"), 21.0],
+        "total_heating_energy_kWh": [1.0, 2.0, 3.0],
+    })
+
+    submissions = {
+        0: {"calibrated_params": NEAR_DEFAULT_PARAMS, "simulations_used": 100},
+    }
+
+    held_out: dict[str, list[float]] = {
+        "zone_air_temperature_C": [20.0, 21.0, 22.0],
+        "total_heating_energy_kWh": [1.0, 2.0, 3.0],
+    }
+
+    with patch.object(
+        engine, "_load_config", return_value={}
+    ), patch(
+        "validator.verification.engine.RCNetworkBackend"
+    ) as mock_rc_cls:
+        mock_rc_cls.return_value.run.return_value = nan_result
+        verified = await engine.verify_all(submissions, TEST_CASE, TEST_PERIOD, held_out)
+
+    assert 0 in verified
+    assert verified[0].reason == "SIMULATION_NAN"
+    assert "zone_air_temperature_C" in verified[0].detail
+
+
+@pytest.mark.asyncio
+async def test_rejects_inf_simulation_output() -> None:
+    """Submissions producing Inf in the RC model should be rejected."""
+    engine = VerificationEngine()
+
+    inf_result = SimulationResult(outputs={
+        "zone_air_temperature_C": [20.0, 21.0, 22.0],
+        "total_heating_energy_kWh": [1.0, math.inf, 3.0],
+    })
+
+    submissions = {
+        0: {"calibrated_params": NEAR_DEFAULT_PARAMS, "simulations_used": 100},
+    }
+
+    held_out: dict[str, list[float]] = {
+        "zone_air_temperature_C": [20.0, 21.0, 22.0],
+        "total_heating_energy_kWh": [1.0, 2.0, 3.0],
+    }
+
+    with patch.object(
+        engine, "_load_config", return_value={}
+    ), patch(
+        "validator.verification.engine.RCNetworkBackend"
+    ) as mock_rc_cls:
+        mock_rc_cls.return_value.run.return_value = inf_result
+        verified = await engine.verify_all(submissions, TEST_CASE, TEST_PERIOD, held_out)
+
+    assert 0 in verified
+    assert verified[0].reason == "SIMULATION_NAN"
+    assert "total_heating_energy_kWh" in verified[0].detail

@@ -36,6 +36,17 @@ DEFAULT_PARAMS = {
     "solar_gain_factor": 0.4,
 }
 
+# Near-optimal params that pass the anti-gaming default check (>0.1% deviation)
+# while still producing near-perfect scores against default ground truth.
+NEAR_OPTIMAL_PARAMS = {
+    "wall_r_value": 3.52,
+    "roof_r_value": 5.02,
+    "zone_capacitance": 200400.0,
+    "infiltration_ach": 0.502,
+    "hvac_cop": 3.52,
+    "solar_gain_factor": 0.402,
+}
+
 
 async def _run_round(
     orchestrator: RoundOrchestrator,
@@ -99,7 +110,7 @@ async def test_full_round_local() -> None:
     ema = EMATracker(alpha=0.3)
     verification_engine = VerificationEngine()
 
-    exact_params = DEFAULT_PARAMS.copy()
+    exact_params = NEAR_OPTIMAL_PARAMS.copy()
 
     slightly_off = DEFAULT_PARAMS.copy()
     slightly_off["wall_r_value"] = 4.5
@@ -136,7 +147,7 @@ async def test_two_rounds_ema() -> None:
     miner1_params["wall_r_value"] = 4.0
 
     submissions = {
-        0: {"calibrated_params": DEFAULT_PARAMS, "simulations_used": 100},
+        0: {"calibrated_params": NEAR_OPTIMAL_PARAMS, "simulations_used": 100},
         1: {"calibrated_params": miner1_params, "simulations_used": 100},
     }
 
@@ -162,7 +173,7 @@ async def test_breakdown_format() -> None:
     verification_engine = VerificationEngine()
 
     submissions = {
-        0: {"calibrated_params": DEFAULT_PARAMS, "simulations_used": 150},
+        0: {"calibrated_params": NEAR_OPTIMAL_PARAMS, "simulations_used": 150},
     }
 
     result = await _run_round(orchestrator, scoring_engine, ema, verification_engine, submissions, "round-0")
