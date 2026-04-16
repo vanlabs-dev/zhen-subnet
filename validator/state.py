@@ -54,7 +54,10 @@ def save_state(
 
     tmp_path = path.with_suffix(".json.tmp")
     try:
-        tmp_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(str(tmp_path), str(path))
         logger.info(f"State saved: round {round_count}, {len(ema_scores)} miners tracked")
     except Exception as e:
@@ -95,6 +98,15 @@ def load_state(state_path: Path | None = None) -> dict[str, Any] | None:
         raw["ema_scores"] = {int(uid): float(score) for uid, score in raw["ema_scores"].items()}
     except (ValueError, TypeError, AttributeError) as e:
         logger.warning(f"Invalid ema_scores in state file, starting fresh: {e}")
+        return None
+
+    # Reject state from incompatible spec versions
+    saved_version = raw.get("spec_version", 0)
+    if saved_version != protocol.__spec_version__:
+        logger.warning(
+            f"State file spec_version ({saved_version}) does not match "
+            f"current ({protocol.__spec_version__}), starting fresh"
+        )
         return None
 
     result: dict[str, Any] = raw

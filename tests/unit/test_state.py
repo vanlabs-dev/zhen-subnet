@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 from validator.state import load_state, save_state
 
@@ -53,3 +54,18 @@ def test_atomic_write_no_tmp_left(tmp_path: Path) -> None:
     tmp_file = state_path.with_suffix(".json.tmp")
     assert not tmp_file.exists()
     assert state_path.exists()
+
+
+def test_rejects_incompatible_spec_version(tmp_path: Path) -> None:
+    """State saved with a different spec_version is discarded on load."""
+    state_path = tmp_path / "state.json"
+
+    # Save with current spec_version (1)
+    save_state(round_count=3, ema_scores={1: 0.8}, round_id="round-2", state_path=state_path)
+
+    # Simulate a spec_version bump
+    with patch("validator.state.protocol") as mock_protocol:
+        mock_protocol.__spec_version__ = 2
+        loaded = load_state(state_path=state_path)
+
+    assert loaded is None
