@@ -71,3 +71,34 @@ def test_parse_mixed_responses() -> None:
     assert 30 in submissions
     assert submissions[10]["calibrated_params"]["wall_r_value"] == 3.5
     assert submissions[30]["simulations_used"] == 300
+
+
+def test_oversized_metadata_discarded() -> None:
+    """Metadata exceeding MAX_METADATA_BYTES is discarded, submission kept."""
+    parser = ResponseParser()
+
+    r = CalibrationSynapse()
+    r.calibrated_params = {"wall_r_value": 3.5}
+    r.simulations_used = 100
+    r.training_cvrmse = 0.03
+    r.metadata = {"payload": "x" * 100_000}
+
+    submissions = parser.parse_responses([r], uids=[0])
+
+    assert 0 in submissions
+    assert submissions[0]["metadata"] is None
+    assert submissions[0]["calibrated_params"]["wall_r_value"] == 3.5
+
+
+def test_too_many_params_skipped() -> None:
+    """Submissions with more than MAX_PARAMS calibrated params are excluded."""
+    parser = ResponseParser()
+
+    r = CalibrationSynapse()
+    r.calibrated_params = {f"param_{i}": float(i) for i in range(100)}
+    r.simulations_used = 50
+    r.training_cvrmse = 0.02
+
+    submissions = parser.parse_responses([r], uids=[0])
+
+    assert 0 not in submissions

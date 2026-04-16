@@ -5,11 +5,16 @@ filtering out failed or empty submissions.
 """
 
 import logging
+import sys
 from typing import Any
 
 from protocol.synapse import CalibrationSynapse
 
 logger = logging.getLogger(__name__)
+
+
+MAX_METADATA_BYTES: int = 10_000  # 10 KB
+MAX_PARAMS: int = 50
 
 
 class ResponseParser:
@@ -36,11 +41,25 @@ class ResponseParser:
                 logger.debug(f"Miner {uid}: no calibrated_params in response")
                 continue
 
+            if len(response.calibrated_params) > MAX_PARAMS:
+                logger.warning(f"Miner {uid}: too many params ({len(response.calibrated_params)}), skipping")
+                continue
+
+            raw_metadata = response.metadata
+            if raw_metadata is not None:
+                try:
+                    metadata_size = sys.getsizeof(str(raw_metadata))
+                    if metadata_size > MAX_METADATA_BYTES:
+                        logger.warning(f"Miner {uid}: metadata too large ({metadata_size} bytes), discarding")
+                        raw_metadata = None
+                except Exception:
+                    raw_metadata = None
+
             submissions[uid] = {
                 "calibrated_params": response.calibrated_params,
                 "simulations_used": response.simulations_used or 0,
                 "training_cvrmse": response.training_cvrmse,
-                "metadata": response.metadata,
+                "metadata": raw_metadata,
             }
 
         logger.info(f"Parsed {len(submissions)}/{len(responses)} valid responses")
