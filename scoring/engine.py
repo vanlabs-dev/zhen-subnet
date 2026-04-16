@@ -52,6 +52,28 @@ class ScoringEngine:
     CVRMSE_THRESHOLD: float = 0.30
     NMBE_THRESHOLD: float = 0.10
 
+    def _compute_composite(self, v: VerifiedResult, sim_budget: int) -> float:
+        """Compute raw composite score for a single miner.
+
+        Args:
+            v: Verification result with metrics.
+            sim_budget: Maximum simulation budget for convergence scoring.
+
+        Returns:
+            Raw composite score (not normalized).
+        """
+        cvrmse_norm = safe_clamp(1.0 - (v.cvrmse / self.CVRMSE_THRESHOLD))
+        nmbe_norm = safe_clamp(1.0 - (abs(v.nmbe) / self.NMBE_THRESHOLD))
+        r2_norm = safe_clamp(v.r_squared)
+        conv_norm = safe_clamp(1.0 - (v.simulations_used / sim_budget)) if sim_budget > 0 else 0.0
+
+        return (
+            self.WEIGHTS["cvrmse"] * cvrmse_norm
+            + self.WEIGHTS["nmbe"] * nmbe_norm
+            + self.WEIGHTS["r_squared"] * r2_norm
+            + self.WEIGHTS["convergence"] * conv_norm
+        )
+
     def compute(self, verified: dict[int, VerifiedResult], sim_budget: int = 1000) -> dict[int, float]:
         """Compute normalized weight vector from verification results.
 
@@ -65,25 +87,8 @@ class ScoringEngine:
             Returns empty dict if no miners.
         """
         scores: dict[int, float] = {}
-
         for uid, v in verified.items():
-            if v.reason:
-                scores[uid] = 0.0
-                continue
-
-            cvrmse_norm = safe_clamp(1.0 - (v.cvrmse / self.CVRMSE_THRESHOLD))
-            nmbe_norm = safe_clamp(1.0 - (abs(v.nmbe) / self.NMBE_THRESHOLD))
-            r2_norm = safe_clamp(v.r_squared)
-
-            conv_norm = safe_clamp(1.0 - (v.simulations_used / sim_budget)) if sim_budget > 0 else 0.0
-
-            composite = (
-                self.WEIGHTS["cvrmse"] * cvrmse_norm
-                + self.WEIGHTS["nmbe"] * nmbe_norm
-                + self.WEIGHTS["r_squared"] * r2_norm
-                + self.WEIGHTS["convergence"] * conv_norm
-            )
-            scores[uid] = composite
+            scores[uid] = 0.0 if v.reason else self._compute_composite(v, sim_budget)
 
         # Normalize to weight vector
         total = sum(scores.values())
@@ -108,23 +113,6 @@ class ScoringEngine:
             Mapping of miner UID to raw composite score.
         """
         scores: dict[int, float] = {}
-
         for uid, v in verified.items():
-            if v.reason:
-                scores[uid] = 0.0
-                continue
-
-            cvrmse_norm = safe_clamp(1.0 - (v.cvrmse / self.CVRMSE_THRESHOLD))
-            nmbe_norm = safe_clamp(1.0 - (abs(v.nmbe) / self.NMBE_THRESHOLD))
-            r2_norm = safe_clamp(v.r_squared)
-            conv_norm = safe_clamp(1.0 - (v.simulations_used / sim_budget)) if sim_budget > 0 else 0.0
-
-            composite = (
-                self.WEIGHTS["cvrmse"] * cvrmse_norm
-                + self.WEIGHTS["nmbe"] * nmbe_norm
-                + self.WEIGHTS["r_squared"] * r2_norm
-                + self.WEIGHTS["convergence"] * conv_norm
-            )
-            scores[uid] = composite
-
+            scores[uid] = 0.0 if v.reason else self._compute_composite(v, sim_budget)
         return scores
