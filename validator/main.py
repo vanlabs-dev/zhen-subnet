@@ -42,6 +42,7 @@ DEFAULT_NETWORK = os.environ.get("ZHEN_NETWORK", "test")
 TEMPO_BLOCKS = 360
 BLOCK_TIME_SECONDS = 12
 DEFAULT_TEMPO_SECONDS = TEMPO_BLOCKS * BLOCK_TIME_SECONDS  # 4320s = 72min
+CHALLENGE_TIMEOUT_SECONDS = 600  # 10 minutes, sufficient for n_calls=500
 
 
 class ZhenValidator:
@@ -372,8 +373,8 @@ class ZhenValidator:
             logger.warning("No miners available to query")
             return {"round_id": round_id, "scores": {}, "weights": {}}
 
-        logger.info(f"Sending challenge to {len(axons)} miners (timeout={self.tempo_seconds - 300}s)")
-        timeout = max(60.0, self.tempo_seconds - 300)
+        logger.info(f"Sending challenge to {len(axons)} miners (timeout={CHALLENGE_TIMEOUT_SECONDS}s)")
+        timeout = float(CHALLENGE_TIMEOUT_SECONDS)
 
         if self.challenge_sender is not None:
             responses = await self.challenge_sender.send_challenge(axons, synapse, timeout)
