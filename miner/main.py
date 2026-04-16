@@ -3,9 +3,11 @@
 import argparse
 import asyncio
 import importlib.util
+import json
 import logging
 import os
 import signal
+from pathlib import Path
 from typing import Any, Tuple
 
 if importlib.util.find_spec("bittensor"):
@@ -79,7 +81,8 @@ class ZhenMiner:
 
         # Calibration engine
         self.calibration_engine = CalibrationEngine(algorithm=algorithm, n_calls=n_calls)
-        self.handler = CalibrationHandler(self.calibration_engine)
+        manifest_version = self._load_manifest_version()
+        self.handler = CalibrationHandler(self.calibration_engine, manifest_version=manifest_version)
 
         # Bittensor components
         self.wallet: Any = None
@@ -90,6 +93,23 @@ class ZhenMiner:
 
         if bt is not None:
             self._init_bittensor(wallet_name, wallet_hotkey)
+
+    @staticmethod
+    def _load_manifest_version() -> str | None:
+        """Load manifest version from registry/manifest.json.
+
+        Returns:
+            Version string, or None if the manifest cannot be read.
+        """
+        manifest_path = Path(__file__).resolve().parent.parent / "registry" / "manifest.json"
+        if not manifest_path.exists():
+            return None
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            version: str | None = manifest.get("version")
+            return version
+        except Exception:
+            return None
 
     def _init_bittensor(self, wallet_name: str, wallet_hotkey: str) -> None:
         """Initialize Bittensor SDK v10 components and register axon handler."""

@@ -16,13 +16,15 @@ logger = logging.getLogger(__name__)
 class CalibrationHandler:
     """Handles incoming calibration challenges on the miner's Axon."""
 
-    def __init__(self, calibration_engine: CalibrationEngine) -> None:
+    def __init__(self, calibration_engine: CalibrationEngine, manifest_version: str | None = None) -> None:
         """Initialize the handler with a calibration engine.
 
         Args:
             calibration_engine: Engine to dispatch calibration challenges to.
+            manifest_version: Local manifest version for compatibility checks.
         """
         self.calibration_engine = calibration_engine
+        self.manifest_version = manifest_version
 
     async def forward(self, synapse: CalibrationSynapse) -> CalibrationSynapse:
         """Handle an incoming calibration challenge.
@@ -39,6 +41,12 @@ class CalibrationHandler:
             f"Received challenge: test_case={synapse.test_case_id}, "
             f"round={synapse.round_id}, budget={synapse.simulation_budget}"
         )
+
+        if synapse.manifest_version and self.manifest_version and synapse.manifest_version != self.manifest_version:
+            logger.warning(
+                f"Manifest version mismatch: validator={synapse.manifest_version}, "
+                f"local={self.manifest_version}. Update your miner to match."
+            )
 
         try:
             challenge: dict[str, Any] = {
