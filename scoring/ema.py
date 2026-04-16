@@ -7,6 +7,8 @@ consistent calibrators over lucky one-offs.
 
 from __future__ import annotations
 
+import math
+
 
 class EMATracker:
     """Exponential Moving Average across rounds per miner.
@@ -33,6 +35,8 @@ class EMATracker:
                 the current round.
         """
         for uid, score in round_scores.items():
+            if not math.isfinite(score):
+                continue
             if uid in self.scores:
                 self.scores[uid] = self.alpha * score + (1 - self.alpha) * self.scores[uid]
             else:

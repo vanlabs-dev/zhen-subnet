@@ -75,3 +75,25 @@ def test_decay_does_not_affect_weight_of_active_miners() -> None:
     weights = tracker.get_weights()
     assert 0 not in weights
     assert abs(weights[1] - 1.0) < 1e-9
+
+
+def test_nan_score_ignored() -> None:
+    """NaN scores should not be added to EMA tracking."""
+    tracker = EMATracker(alpha=0.3)
+    tracker.update({1: float("nan")})
+    assert 1 not in tracker.scores
+
+
+def test_inf_score_ignored() -> None:
+    """Inf scores should not be added to EMA tracking."""
+    tracker = EMATracker(alpha=0.3)
+    tracker.update({1: float("inf")})
+    assert 1 not in tracker.scores
+
+
+def test_nan_does_not_corrupt_existing() -> None:
+    """NaN score for an existing UID should leave its EMA unchanged."""
+    tracker = EMATracker(alpha=0.3)
+    tracker.scores[1] = 0.5
+    tracker.update({1: float("nan")})
+    assert tracker.scores[1] == 0.5

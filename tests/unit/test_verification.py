@@ -256,10 +256,12 @@ async def test_rejects_nan_simulation_output() -> None:
     """Submissions producing NaN/Inf in the RC model should be rejected."""
     engine = VerificationEngine()
 
-    nan_result = SimulationResult(outputs={
-        "zone_air_temperature_C": [20.0, float("nan"), 21.0],
-        "total_heating_energy_kWh": [1.0, 2.0, 3.0],
-    })
+    nan_result = SimulationResult(
+        outputs={
+            "zone_air_temperature_C": [20.0, float("nan"), 21.0],
+            "total_heating_energy_kWh": [1.0, 2.0, 3.0],
+        }
+    )
 
     submissions = {
         0: {"calibrated_params": NEAR_DEFAULT_PARAMS, "simulations_used": 100},
@@ -270,11 +272,10 @@ async def test_rejects_nan_simulation_output() -> None:
         "total_heating_energy_kWh": [1.0, 2.0, 3.0],
     }
 
-    with patch.object(
-        engine, "_load_config", return_value={}
-    ), patch(
-        "validator.verification.engine.RCNetworkBackend"
-    ) as mock_rc_cls:
+    with (
+        patch.object(engine, "_load_config", return_value={}),
+        patch("validator.verification.engine.RCNetworkBackend") as mock_rc_cls,
+    ):
         mock_rc_cls.return_value.run.return_value = nan_result
         verified = await engine.verify_all(submissions, TEST_CASE, TEST_PERIOD, held_out)
 
@@ -288,10 +289,12 @@ async def test_rejects_inf_simulation_output() -> None:
     """Submissions producing Inf in the RC model should be rejected."""
     engine = VerificationEngine()
 
-    inf_result = SimulationResult(outputs={
-        "zone_air_temperature_C": [20.0, 21.0, 22.0],
-        "total_heating_energy_kWh": [1.0, math.inf, 3.0],
-    })
+    inf_result = SimulationResult(
+        outputs={
+            "zone_air_temperature_C": [20.0, 21.0, 22.0],
+            "total_heating_energy_kWh": [1.0, math.inf, 3.0],
+        }
+    )
 
     submissions = {
         0: {"calibrated_params": NEAR_DEFAULT_PARAMS, "simulations_used": 100},
@@ -302,11 +305,10 @@ async def test_rejects_inf_simulation_output() -> None:
         "total_heating_energy_kWh": [1.0, 2.0, 3.0],
     }
 
-    with patch.object(
-        engine, "_load_config", return_value={}
-    ), patch(
-        "validator.verification.engine.RCNetworkBackend"
-    ) as mock_rc_cls:
+    with (
+        patch.object(engine, "_load_config", return_value={}),
+        patch("validator.verification.engine.RCNetworkBackend") as mock_rc_cls,
+    ):
         mock_rc_cls.return_value.run.return_value = inf_result
         verified = await engine.verify_all(submissions, TEST_CASE, TEST_PERIOD, held_out)
 
