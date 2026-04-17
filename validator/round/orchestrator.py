@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,24 @@ from validator.emulator.manager import BOPTESTManager
 from validator.registry.manifest import ManifestLoader
 
 logger = logging.getLogger(__name__)
+
+
+def validate_config_bounds(config: dict[str, Any]) -> None:
+    """Validate parameter_bounds in a test case config.
+
+    Raises:
+        ValueError: If any bounds entry is malformed (wrong shape, non-finite,
+            or inverted).
+    """
+    bounds = config.get("parameter_bounds", {})
+    for name, b in bounds.items():
+        if not isinstance(b, list) or len(b) != 2:
+            raise ValueError(f"Invalid bounds for {name}: must be [lo, hi]")
+        lo, hi = b
+        if not (math.isfinite(lo) and math.isfinite(hi)):
+            raise ValueError(f"Non-finite bounds for {name}: [{lo}, {hi}]")
+        if lo >= hi:
+            raise ValueError(f"Inverted bounds for {name}: lo ({lo}) >= hi ({hi})")
 
 
 class RoundOrchestrator:
@@ -148,7 +167,11 @@ class RoundOrchestrator:
 
         Returns:
             Parsed config dict.
+
+        Raises:
+            ValueError: If parameter_bounds in the config are malformed.
         """
         config_path = Path.home() / ".zhen" / "test_cases" / test_case_id / "config.json"
         result: dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
+        validate_config_bounds(result)
         return result

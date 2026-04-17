@@ -16,6 +16,7 @@ from typing import Any
 
 from scoring.metrics import compute_cvrmse, compute_nmbe, compute_r_squared
 from simulation.rc_network import RCNetworkBackend
+from validator.round.orchestrator import validate_config_bounds
 from validator.scoring.engine import VerifiedResult
 
 
@@ -193,7 +194,11 @@ class VerificationEngine:
 
         Returns:
             Parsed config dict.
+
+        Raises:
+            ValueError: If parameter_bounds in the config are malformed.
         """
         config_path = Path.home() / ".zhen" / "test_cases" / test_case_id / "config.json"
         result: dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
+        validate_config_bounds(result)
         return result

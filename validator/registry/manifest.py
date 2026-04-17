@@ -39,6 +39,13 @@ class ManifestLoader:
         if "test_cases" not in manifest:
             raise ManifestError("Manifest missing required field: test_cases")
 
+        # Duplicate test_case ids would make selection non-deterministic and
+        # let one entry shadow another in lookups; refuse to load.
+        test_case_ids = [tc["id"] for tc in manifest["test_cases"] if isinstance(tc, dict) and "id" in tc]
+        if len(test_case_ids) != len(set(test_case_ids)):
+            duplicates = {tid for tid in test_case_ids if test_case_ids.count(tid) > 1}
+            raise ManifestError(f"Duplicate test_case IDs in manifest: {sorted(duplicates)}")
+
         return dict(manifest)
 
     def get_test_case(self, manifest: dict[str, Any], test_case_id: str) -> dict[str, Any] | None:

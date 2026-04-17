@@ -6,6 +6,8 @@ to search the parameter space and minimize CVRMSE on training data.
 
 from __future__ import annotations
 
+import math
+
 from skopt import gp_minimize
 from skopt.space import Real
 
@@ -54,6 +56,19 @@ class BayesianCalibrator:
         Returns:
             CalibrationOutput with best parameters found.
         """
+        # Validate bounds structure before constructing the search space.
+        for name in parameter_names:
+            if name not in parameter_bounds:
+                raise ValueError(f"Missing bounds for parameter: {name}")
+            bounds = parameter_bounds[name]
+            if len(bounds) != 2:
+                raise ValueError(f"Invalid bounds format for {name}: expected [lo, hi]")
+            lo, hi = bounds
+            if not (math.isfinite(lo) and math.isfinite(hi)):
+                raise ValueError(f"Non-finite bounds for {name}: [{lo}, {hi}]")
+            if lo >= hi:
+                raise ValueError(f"Invalid bounds for {name}: lo ({lo}) >= hi ({hi})")
+
         # Build search space dimensions
         dimensions = []
         for name in parameter_names:

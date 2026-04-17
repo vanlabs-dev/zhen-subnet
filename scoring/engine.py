@@ -122,7 +122,7 @@ class ScoringEngine:
             scores = {uid: (s if s >= floor else 0.0) for uid, s in scores.items()}
 
         # Power-law normalization: amplify quality differences before normalizing.
-        powered: dict[int, float] = {uid: s ** self.POWER_EXPONENT for uid, s in scores.items()}
+        powered: dict[int, float] = {uid: s**self.POWER_EXPONENT for uid, s in scores.items()}
 
         total = sum(powered.values())
         if total > 0:

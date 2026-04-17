@@ -11,6 +11,7 @@ import contextlib
 import json
 import logging
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -52,7 +53,8 @@ def save_state(
         "spec_version": protocol.__spec_version__,
     }
 
-    tmp_path = path.with_suffix(".json.tmp")
+    # Per-call unique tmp path so concurrent saves cannot stomp on each other.
+    tmp_path = path.with_suffix(f".json.tmp.{os.getpid()}.{uuid.uuid4().hex[:8]}")
     try:
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2)
@@ -78,6 +80,13 @@ def load_state(state_path: Path | None = None) -> dict[str, Any] | None:
         or None if no state file exists or it is corrupted.
     """
     path = state_path or DEFAULT_STATE_PATH
+
+    # Sweep stale tmp files left behind by save_state crashes. Healthy saves
+    # consume their tmp via os.replace, so anything left here is leftover.
+    if path.parent.exists():
+        for stale in path.parent.glob(f"{path.name}.tmp.*"):
+            with contextlib.suppress(Exception):
+                stale.unlink()
 
     if not path.exists():
         return None

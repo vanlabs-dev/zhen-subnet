@@ -8,15 +8,20 @@ state-file tampering, and malformed response payloads.
 
 from __future__ import annotations
 
+import json
 import math
+import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from miner.calibration.engine import CalibrationEngine
 from protocol.synapse import CalibrationSynapse
 from scoring.engine import ScoringEngine, VerifiedResult
 from validator.network.result_receiver import ResponseParser
+from validator.registry.manifest import ManifestError, ManifestLoader
+from validator.round.orchestrator import validate_config_bounds
 from validator.state import load_state, save_state
 from validator.verification.engine import VerificationEngine
 
@@ -267,3 +272,158 @@ def test_power_law_amplifies_quality() -> None:
 
     # Power-law gives the better miner a strictly larger share than linear.
     assert weights[0] > linear_weight_a
+
+
+# ---------------------------------------------------------------------------
+# Miner input validation
+# ---------------------------------------------------------------------------
+
+
+_VALID_BOUNDS: dict[str, list[float]] = {
+    "wall_r_value": [0.5, 10.0],
+    "roof_r_value": [0.5, 12.0],
+    "zone_capacitance": [50000.0, 500000.0],
+    "infiltration_ach": [0.1, 2.0],
+    "hvac_cop": [1.5, 6.0],
+    "solar_gain_factor": [0.0, 1.0],
+}
+_VALID_PARAM_NAMES: list[str] = list(_VALID_BOUNDS.keys())
+
+
+def _miner_challenge(**overrides: Any) -> dict[str, Any]:
+    """Build a baseline challenge dict for miner-side validation tests."""
+    base: dict[str, Any] = {
+        "test_case_id": "bestest_hydronic_heat_pump",
+        "training_data": {"zone_air_temperature_C": [20.0, 21.0, 22.0]},
+        "parameter_names": _VALID_PARAM_NAMES,
+        "parameter_bounds": _VALID_BOUNDS,
+        "simulation_budget": 100,
+        "train_start_hour": 0,
+        "train_end_hour": 24,
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.asyncio
+async def test_miner_rejects_nan_training_data() -> None:
+    """Attack: send NaN values in training_data to poison the optimizer."""
+    engine = CalibrationEngine(algorithm="bayesian", n_calls=10)
+    challenge = _miner_challenge(training_data={"zone_air_temperature_C": [20.0, float("nan"), 22.0]})
+    with pytest.raises(ValueError, match="non-finite"):
+        await engine.calibrate(challenge)
+
+
+@pytest.mark.asyncio
+async def test_miner_rejects_empty_training_data() -> None:
+    """Attack: send an empty training_data dict to crash the miner."""
+    engine = CalibrationEngine(algorithm="bayesian", n_calls=10)
+    with pytest.raises(ValueError, match="empty"):
+        await engine.calibrate(_miner_challenge(training_data={}))
+
+
+@pytest.mark.asyncio
+async def test_miner_rejects_inverted_bounds() -> None:
+    """Attack: send parameter bounds with lo >= hi to crash skopt's Real()."""
+    engine = CalibrationEngine(algorithm="bayesian", n_calls=10)
+    bad_bounds = dict(_VALID_BOUNDS)
+    bad_bounds["wall_r_value"] = [10.0, 0.5]
+    with pytest.raises(ValueError, match="Invalid bounds"):
+        await engine.calibrate(_miner_challenge(parameter_bounds=bad_bounds))
+
+
+@pytest.mark.asyncio
+async def test_miner_rejects_unknown_test_case() -> None:
+    """Attack: reference a test case the miner has never seen, which would crash with FileNotFoundError."""
+    engine = CalibrationEngine(algorithm="bayesian", n_calls=10)
+    with pytest.raises(ValueError, match="Unknown test_case_id"):
+        await engine.calibrate(_miner_challenge(test_case_id="nonexistent_test_case_12345"))
+
+
+# ---------------------------------------------------------------------------
+# Validator config / manifest validation
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_rejects_duplicate_ids(tmp_path: Path) -> None:
+    """A manifest with duplicate test_case ids must fail to load."""
+    bad_manifest = {
+        "version": "v1.0.0",
+        "test_cases": [
+            {
+                "id": "duplicate",
+                "simplified_model_type": "rc_network",
+                "parameter_count": 1,
+                "scoring_outputs": ["x"],
+            },
+            {
+                "id": "duplicate",
+                "simplified_model_type": "rc_network",
+                "parameter_count": 1,
+                "scoring_outputs": ["x"],
+            },
+        ],
+    }
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(bad_manifest), encoding="utf-8")
+
+    loader = ManifestLoader()
+    with pytest.raises(ManifestError, match="Duplicate"):
+        loader.load(manifest_path)
+
+
+def test_config_rejects_inverted_bounds() -> None:
+    """validate_config_bounds rejects [hi, lo] entries."""
+    bad_config = {"parameter_bounds": {"x": [10.0, 0.5]}}
+    with pytest.raises(ValueError, match="Inverted bounds"):
+        validate_config_bounds(bad_config)
+
+
+def test_config_rejects_non_finite_bounds() -> None:
+    """validate_config_bounds rejects NaN/Inf bounds."""
+    with pytest.raises(ValueError, match="Non-finite"):
+        validate_config_bounds({"parameter_bounds": {"x": [0.0, float("inf")]}})
+
+
+def test_config_rejects_malformed_bounds() -> None:
+    """validate_config_bounds rejects bounds that aren't a [lo, hi] pair."""
+    with pytest.raises(ValueError, match="Invalid bounds"):
+        validate_config_bounds({"parameter_bounds": {"x": [1.0]}})
+    with pytest.raises(ValueError, match="Invalid bounds"):
+        validate_config_bounds({"parameter_bounds": {"x": "not a list"}})
+
+
+# ---------------------------------------------------------------------------
+# Concurrent state save
+# ---------------------------------------------------------------------------
+
+
+def test_concurrent_state_saves_no_corruption(tmp_path: Path) -> None:
+    """20 concurrent save_state calls must leave the file in a loadable state.
+
+    With unique tmp paths per call, os.replace is the only race window and is
+    atomic, so the loaded file is exactly one of the saved snapshots.
+    """
+    state_path = tmp_path / "state.json"
+
+    def save_one(i: int) -> None:
+        save_state(round_count=i, ema_scores={i: 0.5}, round_id=f"round-{i}", state_path=state_path)
+
+    threads = [threading.Thread(target=save_one, args=(i,)) for i in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    loaded = load_state(state_path=state_path)
+    assert loaded is not None
+    assert 0 <= loaded["round_count"] < 20
+    # Every winning save uses ema_scores={i: 0.5} for some i, so the dict has one entry.
+    assert len(loaded["ema_scores"]) == 1
+    [(uid, score)] = loaded["ema_scores"].items()
+    assert score == 0.5
+    assert uid == loaded["round_count"]
+
+    # No leftover tmp files (load_state sweeps any survivors before reading).
+    leftovers = list(tmp_path.glob("state.json.tmp.*"))
+    assert leftovers == []
