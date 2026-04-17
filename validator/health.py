@@ -18,13 +18,17 @@ logger = logging.getLogger(__name__)
 class HealthServer:
     """HTTP health check endpoint for validator monitoring."""
 
-    def __init__(self, port: int = 8080) -> None:
+    def __init__(self, port: int = 8080, bind_address: str = "127.0.0.1") -> None:
         """Initialize the health server.
 
         Args:
             port: TCP port to listen on.
+            bind_address: Interface to bind to. Defaults to loopback so the
+                endpoint is not exposed to the network. Operators who need
+                external monitoring can pass "0.0.0.0".
         """
         self.port = port
+        self.bind_address = bind_address
         self.start_time = time.time()
         self.last_round_time: float = 0.0
         self.round_count: int = 0
@@ -61,6 +65,6 @@ class HealthServer:
         app.router.add_get("/health", self._handle_health)
         runner = web.AppRunner(app)
         await runner.setup()
-        site = web.TCPSite(runner, "0.0.0.0", self.port)
+        site = web.TCPSite(runner, self.bind_address, self.port)
         await site.start()
-        logger.info(f"Health check server started on port {self.port}")
+        logger.info(f"Health check server started on {self.bind_address}:{self.port}")

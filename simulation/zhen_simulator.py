@@ -33,6 +33,7 @@ class ZhenSimulator:
         self.test_case_id = test_case_id
         self.config = self._load_config(test_case_id)
         self.backend = self._init_backend(params)
+        self._last_result: SimulationResult | None = None
 
     def _load_config(self, test_case_id: str) -> dict[str, Any]:
         """Load config.json from the local test case directory."""
@@ -56,11 +57,23 @@ class ZhenSimulator:
         Returns:
             SimulationResult containing output time-series.
         """
-        return self.backend.run(start_hour, end_hour)
+        self._last_result = self.backend.run(start_hour, end_hour)
+        return self._last_result
 
     def get_outputs(self, output_names: list[str]) -> dict[str, list[float]]:
         """Return predicted values for the specified scoring output names.
 
         Must be called after run().
+
+        Args:
+            output_names: List of scoring output names to retrieve.
+
+        Returns:
+            Dict mapping output names to value lists.
+
+        Raises:
+            RuntimeError: If called before run().
         """
-        raise NotImplementedError("Call run() and use SimulationResult.get_outputs() instead")
+        if self._last_result is None:
+            raise RuntimeError("Call run() before get_outputs()")
+        return self._last_result.get_outputs(output_names)

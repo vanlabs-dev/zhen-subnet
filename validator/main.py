@@ -81,6 +81,13 @@ class ZhenValidator:
         self.boptest_url = boptest_url
         self.tempo_seconds = DEFAULT_TEMPO_SECONDS
 
+        # Refuse local mode on mainnet (RC defaults as ground truth are trivially gameable)
+        if self.local_mode and self.network in ("finney", "main"):
+            raise ValueError(
+                "Local mode is not allowed on mainnet. "
+                "Use --no-local-mode with a running BOPTEST service."
+            )
+
         # Load manifest
         loader = ManifestLoader()
         self.manifest = loader.load(manifest_path)

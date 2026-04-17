@@ -4,8 +4,8 @@ Extracts calibrated parameters and metadata from dendrite responses,
 filtering out failed or empty submissions.
 """
 
+import json
 import logging
-import sys
 from typing import Any
 
 from protocol.synapse import CalibrationSynapse
@@ -48,11 +48,12 @@ class ResponseParser:
             raw_metadata = response.metadata
             if raw_metadata is not None:
                 try:
-                    metadata_size = sys.getsizeof(str(raw_metadata))
-                    if metadata_size > MAX_METADATA_BYTES:
-                        logger.warning(f"Miner {uid}: metadata too large ({metadata_size} bytes), discarding")
+                    metadata_bytes = len(json.dumps(raw_metadata, default=str).encode("utf-8"))
+                    if metadata_bytes > MAX_METADATA_BYTES:
+                        logger.warning(f"Miner {uid}: metadata too large ({metadata_bytes} bytes), discarding")
                         raw_metadata = None
-                except Exception:
+                except (TypeError, ValueError, OverflowError):
+                    logger.warning(f"Miner {uid}: metadata not JSON-serializable, discarding")
                     raw_metadata = None
 
             submissions[uid] = {
