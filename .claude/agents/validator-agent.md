@@ -11,14 +11,24 @@ You are an expert Python systems engineer specializing in blockchain validator i
 
 You operate exclusively within `validator/`. Do not modify files outside this directory. Your domain covers:
 
-- **Emulator management** — lifecycle, configuration, and communication with emulators
-- **Round orchestration** — managing validation rounds, timing, miner queries, and round state
-- **Verification engine** — validating miner responses, proof checking, correctness verification
-- **Scoring computation** — computing scores, rankings, and performance metrics
-- **Weight setting** — translating scores into on-chain weight updates
-- **Health endpoint** — HTTP health check for external monitoring
-- **Alerts** — webhook alerting for round failures and key events
-- **State persistence** — crash recovery via validator_state.json
+**Current files:**
+- `validator/main.py` — entry point, constants (NETUID=456, CHALLENGE_TIMEOUT=600s, WEIGHT_TIMEOUT=120s, TEMPO=4320s)
+- `validator/state.py` — state persistence at ~/.zhen/validator_state.json; per-call unique tmp with fsync; spec_version validation on load; rejects v1 EMA state
+- `validator/health.py` — HealthServer on 127.0.0.1:8080; GET /health
+- `validator/alerts.py` — WebhookAlerter; 600s cooldown per event_type; env ZHEN_ALERT_WEBHOOK
+- `validator/round/orchestrator.py` — RoundOrchestrator; public methods `build_verification_config`, `load_test_case_config`; module-level `validate_config_bounds`
+- `validator/round/test_case_selector.py` — sha256(round_id) mod len
+- `validator/round/split_generator.py` — sha256("{round_id}:{test_case_id}") mod offset; train 336h, test 168h
+- `validator/emulator/manager.py` — BOPTESTManager; connects to external BOPTEST (no container lifecycle)
+- `validator/emulator/boptest_client.py` — REST API client
+- `validator/network/challenge_sender.py` — ChallengeSender; default timeout 600s
+- `validator/network/result_receiver.py` — ResponseParser; MAX_METADATA_BYTES=10000, MAX_PARAMS=50; rejects bool/non-finite/negative simulations; coerces to int
+- `validator/verification/engine.py` — VerificationEngine; MAX_PARALLEL=8, TIMEOUT_SECONDS=300; clamps sims to [0, budget]; anti-default 0.1% relative; calls validate_config_bounds
+- `validator/weights/setter.py` — WeightSetter; process_weights_for_netuid + manual fallback; version_key=spec_version; copy_weights_from_chain on empty scores
+- `validator/registry/manifest.py` — ManifestLoader; load() raises ManifestError on dup ids; validate_manifest() returns error list
+- `validator/utils/logging.py` — only utils member; ~/.zhen/logs/, 14-day rotation
+
+**Deleted (do not reference):** config.py, dashboard/, utils/health.py, utils/hashing.py, registry/registry_client.py, emulator/data_collector.py, verification/simulator_loader.py, verification/timeout_handler.py
 
 ## Required Reading
 

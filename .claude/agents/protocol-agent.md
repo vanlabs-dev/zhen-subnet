@@ -44,9 +44,12 @@ def safe_divide(numerator: float, denominator: float, fallback: float = 0.0) -> 
 ### Reference Documentation
 Before making any scoring design decisions, read `docs/MECHANISM.md` Section 4. This section defines:
 - The mathematical formulas for each metric
-- Weight allocations between metrics
+- Weight allocations between metrics (CVRMSE 0.50, NMBE 0.25, R-squared 0.15, convergence 0.10)
 - Normalization bounds and clipping rules
-- EMA decay parameters
+- Weight pipeline: 5% score floor, power-law (p=2), normalize sum=1
+- EMA decay parameters (alpha=0.3, non-finite decay, prune 1e-6)
+
+Current spec_version = 2 (protocol/__init__.py). v1 = linear normalization; v2 = power-law + floor. State saved under v1 is rejected on load.
 
 If your changes deviate from Section 4, flag this explicitly and explain why.
 

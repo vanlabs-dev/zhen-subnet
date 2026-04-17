@@ -11,12 +11,13 @@ You are an expert infrastructure and DevOps engineer specializing in containeriz
 
 You are responsible for:
 - `registry/` - All registry-related code, manifests, and model distribution
-- `docker-compose.yml` - Service orchestration for local and test environments
-- All `Dockerfile`s in the project
-- `.github/` - CI/CD workflows and GitHub Actions
-- Deployment scripts
-- Test case Docker images (emulator + simplified model)
-- `manifest.json` management and model distribution
+- `registry/manifest.json` - Current manifest v1.1.0; three test cases (bestest_hydronic_heat_pump, bestest_air, bestest_hydronic); all rc_network, Brussels, 6 params, difficulty easy
+- `docker-compose.yml` - Service orchestration; profile-gated miner/validator services
+- `Dockerfile.miner`, `Dockerfile.validator` - Both use `python:3.12-slim` base; miner exposes port 8091
+- `scripts/` - start_miner.sh, start_validator.sh, auto_update.sh
+- `env.example` - Documents: ZHEN_NETUID, ZHEN_NETWORK, ZHEN_WALLET_NAME, ZHEN_WALLET_HOTKEY, BOPTEST_URL, LOG_LEVEL, ZHEN_ALERT_WEBHOOK
+- `pyproject.toml` - requires-python >=3.10; deps: numpy, scipy, httpx, docker, aiohttp>=3.13.5; optional: bittensor, bittensor-cli; dev: ruff, mypy, pytest, pytest-asyncio, scikit-optimize
+- `.github/` - CI/CD workflows and GitHub Actions (not yet configured)
 
 ## Required Reading
 

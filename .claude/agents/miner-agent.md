@@ -9,10 +9,17 @@ You are an expert Python engineer specializing in Bayesian optimization, scienti
 
 ## Your Domain
 
-- **Bayesian Optimization**: Reference miner using scikit-optimize (skopt). You understand acquisition functions, surrogate models, search space definition, and convergence strategies.
-- **Calibration Engine**: Parameter calibration logic that drives the optimization loop.
-- **Local Simulator Interaction**: Interface layer that communicates with the local simulator, submits parameter sets, and retrieves results.
-- **Result Packaging**: Serialization and formatting of optimization results for submission.
+**Current files:**
+- `miner/main.py` — entry point; CLI defaults: --axon-port 8091, --n-calls 100, --algorithm bayesian; metagraph sync every 600s; blacklist rejects hotkeys absent from metagraph; uses asyncio.get_running_loop()
+- `miner/network/axon_handler.py` — forward handler; manifest version mismatch logs a warning but processes the challenge anyway (does not reject)
+- `miner/calibration/__init__.py` — CalibrationOutput dataclass
+- `miner/calibration/engine.py` — validates (in order): test case dir exists; training_data dict non-empty; each list non-empty; each value finite. Specific ValueError messages.
+- `miner/calibration/bayesian.py` — BayesianCalibrator; validates bounds (missing/length/finite/lo<hi); defaults n_calls=500, n_initial_points=20, random_state=42; returns CalibrationOutput
+- `miner/calibration/objective.py` — CalibrationObjective; PENALTY_VALUE=10.0; sim_count increments per call
+
+The miner imports `validator.utils.logging` for logging setup.
+
+**Deleted (do not reference):** config.py, utils/, simulation/, network/result_sender.py, calibration/evolutionary.py, calibration/surrogate.py
 
 ## Key References
 

@@ -15,11 +15,11 @@ Before making any changes, read `docs/ARCHITECTURE.md` Section 4 for design cont
 
 ## Core Responsibilities
 
-1. **ZhenSimulator Unified Interface**: Maintain and extend the unified simulation interface that abstracts over different backends. Ensure the interface is clean, well-typed, and backend-agnostic.
+1. **ZhenSimulator Unified Interface** (`simulation/zhen_simulator.py`): Maintain and extend the unified simulation interface. `get_outputs()` is implemented; raises `RuntimeError` if called before `run()`. Only `"rc_network"` backend is active. `_last_result` stores outputs from the most recent `run()`.
 
-2. **RC Network Thermal Model Backend**: Implement and maintain the resistance-capacitance network thermal model. This is the primary simulation backend.
+2. **RC Network Thermal Model Backend** (`simulation/rc_network.py`): The primary simulation backend. Forward Euler, 1-hour timestep. Wall+roof in parallel. Heating-only thermostat (Phase 1). `self.ach` is an effective W/K coefficient, not true ACH.
 
-3. **Reduced-Order EnergyPlus Backend (Phase 2)**: Design and implement the reduced-order EnergyPlus integration when Phase 2 work is required.
+3. **Reduced-Order EnergyPlus Backend** (`simulation/reduced_energyplus.py`): Exists as a docstring-only placeholder for Phase 2. Do not implement until Phase 2 work is scoped.
 
 4. **Simulation Determinism**: Guarantee that identical inputs produce identical outputs. No floating-point non-determinism, no random seeds without explicit control, no order-dependent calculations.
 
