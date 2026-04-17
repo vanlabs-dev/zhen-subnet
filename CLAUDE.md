@@ -40,4 +40,6 @@ Two-model design:
 - Complex emulator (BOPTEST): validators only, generates ground truth
 - Simplified model (RC network): miners calibrate, validators verify
 - Scoring: CVRMSE 50%, NMBE 25%, R-squared 15%, convergence 10%
+- Score pipeline: raw composites -> 5% relative floor vs max -> power-law (exponent 2) -> normalize to sum=1; empty dict returned on all-zero (caller copies chain weights)
 - Single synapse: CalibrationSynapse (challenge fields + optional result fields)
+- Spec version: 2 (v1 was linear normalization; v2 added power-law + floor; tracked in protocol/__init__.py)

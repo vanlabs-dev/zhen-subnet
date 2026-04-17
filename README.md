@@ -16,7 +16,7 @@
 
 ## Status
 
-Testnet live on Bittensor subnet 456. 99 tests passing.
+Testnet live on Bittensor subnet 456. 131 tests passing.
 
 **Milestones proven:**
 - Two-model architecture (Milestone 1, 2026-04-14)

@@ -15,11 +15,12 @@ The architecture is domain-agnostic. Any domain with a complex simulation and a 
 
 ## Current vertical: building energy
 - Scoring: CVRMSE 50%, NMBE 25%, R-squared 15%, convergence efficiency 10%
+- Score pipeline: raw composites -> 5% relative floor vs max -> power-law (exponent 2) -> normalize sum=1
 - Ground truth: BOPTEST containerized building emulators
 - Simplified models: RC network thermal models
 - Climate: Brussels, Belgium (BESTEST reference buildings)
 - 3 test cases: bestest_hydronic_heat_pump, bestest_air, bestest_hydronic
-- Spec version: 1
+- Spec version: 2
 
 ## Deployment
 - Docker: Dockerfile.miner, Dockerfile.validator, docker-compose.yml with profiles

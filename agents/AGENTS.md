@@ -9,6 +9,6 @@ Zhen is a decentralized digital twin calibration platform on Bittensor. First ve
 | protocol-agent | protocol/, scoring/ | sonnet | CalibrationSynapse definition, shared scoring logic, EMA tracker |
 | simulation-agent | simulation/ | sonnet | ZhenSimulator interface, RC network backend, simulation determinism |
 | infra-agent | registry/, .github/, docker-compose.yml | sonnet | Docker images, CI/CD, manifest management, deployment |
-| docs-agent | docs/, README.md, llms.txt | sonnet | Documentation creation and maintenance |
+| docs-agent | docs/, README.md, llms.txt, agents/AGENTS.md | sonnet | Documentation creation and maintenance |
 
 Agent definitions are in `.claude/agents/*.md`
