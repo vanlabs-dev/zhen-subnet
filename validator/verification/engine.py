@@ -114,6 +114,10 @@ class VerificationEngine:
         simulations_used = submission.get("simulations_used", 0)
         parameter_bounds = test_case["parameter_bounds"]
 
+        # Clamp simulations_used to [0, simulation_budget] so negative values cannot
+        # game convergence and runaway reports cannot underflow the normalization.
+        simulations_used = max(0, min(simulations_used, test_case.get("simulation_budget", 1000)))
+
         # Validate parameters within bounds
         for param, value in calibrated_params.items():
             if param not in parameter_bounds:

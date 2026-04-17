@@ -21,39 +21,38 @@ class TestNaNHandling:
     """All-NaN and partial-NaN inputs must not crash."""
 
     def test_all_miners_nan(self) -> None:
-        """Every miner has NaN metrics. Should not crash, all weights finite.
-
-        NaN cvrmse/nmbe/r_squared clamp to 0 via safe_clamp, but convergence
-        still contributes from simulations_used. With equal sim counts, weights
-        are equal. With different sim counts, weights differ (correct behavior).
-        """
+        """Every miner has NaN metrics: all score 0.0, compute returns {} so the caller can fall back to chain weights."""
         engine = ScoringEngine()
-        # Same simulations_used so convergence component is equal too
         verified = {
             0: VerifiedResult(cvrmse=float("nan"), nmbe=float("nan"), r_squared=float("nan"), simulations_used=500),
             1: VerifiedResult(cvrmse=float("nan"), nmbe=float("nan"), r_squared=float("nan"), simulations_used=500),
         }
         weights = engine.compute(verified)
-
-        # Only convergence contributes, and it is equal -> equal weights
-        assert len(weights) == 2
-        for uid in weights:
-            assert math.isfinite(weights[uid])
-        assert abs(weights[0] - weights[1]) < 1e-10
+        assert weights == {}
 
 
 class TestInfHandling:
-    """Inf values must be clamped gracefully."""
+    """Inf values must be treated as invalid, not earn weight through healthy components."""
 
-    def test_inf_cvrmse(self) -> None:
-        """Inf CVRMSE should clamp to 0.0 component score via safe_clamp."""
+    def test_inf_cvrmse_scores_zero(self) -> None:
+        """Inf CVRMSE forces composite 0.0; single-miner round yields empty weights (caller falls back to chain)."""
         engine = ScoringEngine()
         verified = {
             0: VerifiedResult(cvrmse=float("inf"), nmbe=0.01, r_squared=0.90, simulations_used=200),
         }
         weights = engine.compute(verified)
-        assert math.isfinite(weights[0])
-        assert weights[0] == 1.0  # Only miner, gets all weight
+        assert weights == {}
+
+    def test_inf_cvrmse_does_not_starve_healthy_peers(self) -> None:
+        """A miner with Inf CVRMSE gets 0 weight while a healthy peer keeps the full share."""
+        engine = ScoringEngine()
+        verified = {
+            0: VerifiedResult(cvrmse=float("inf"), nmbe=0.01, r_squared=0.90, simulations_used=200),
+            1: VerifiedResult(cvrmse=0.10, nmbe=0.02, r_squared=0.85, simulations_used=300),
+        }
+        weights = engine.compute(verified)
+        assert weights[0] == 0.0
+        assert math.isclose(weights[1], 1.0, abs_tol=1e-9)
 
 
 class TestNegativeRSquared:

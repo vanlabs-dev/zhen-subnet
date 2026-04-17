@@ -6,6 +6,7 @@ filtering out failed or empty submissions.
 
 import json
 import logging
+import math
 from typing import Any
 
 from protocol.synapse import CalibrationSynapse
@@ -56,9 +57,21 @@ class ResponseParser:
                     logger.warning(f"Miner {uid}: metadata not JSON-serializable, discarding")
                     raw_metadata = None
 
+            sims_used_raw = response.simulations_used or 0
+            if (
+                not isinstance(sims_used_raw, (int, float))
+                or isinstance(sims_used_raw, bool)
+                or (isinstance(sims_used_raw, float) and not math.isfinite(sims_used_raw))
+                or sims_used_raw < 0
+            ):
+                logger.warning(f"Miner {uid}: invalid simulations_used ({sims_used_raw!r}), setting to 0")
+                sims_used = 0
+            else:
+                sims_used = int(sims_used_raw)
+
             submissions[uid] = {
                 "calibrated_params": response.calibrated_params,
-                "simulations_used": response.simulations_used or 0,
+                "simulations_used": sims_used,
                 "training_cvrmse": response.training_cvrmse,
                 "metadata": raw_metadata,
             }

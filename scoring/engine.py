@@ -8,6 +8,7 @@ the local eval harness.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 
 from scoring.normalization import safe_clamp
@@ -55,6 +56,10 @@ class ScoringEngine:
     def _compute_composite(self, v: VerifiedResult, sim_budget: int) -> float:
         """Compute raw composite score for a single miner.
 
+        Any non-finite metric (NaN/Inf in CVRMSE, NMBE, or R-squared) forces
+        the composite to 0.0 so a partially-broken result cannot still earn
+        weight through the healthy components.
+
         Args:
             v: Verification result with metrics.
             sim_budget: Maximum simulation budget for convergence scoring.
@@ -62,6 +67,9 @@ class ScoringEngine:
         Returns:
             Raw composite score (not normalized).
         """
+        if not (math.isfinite(v.cvrmse) and math.isfinite(v.nmbe) and math.isfinite(v.r_squared)):
+            return 0.0
+
         cvrmse_norm = safe_clamp(1.0 - (v.cvrmse / self.CVRMSE_THRESHOLD))
         nmbe_norm = safe_clamp(1.0 - (abs(v.nmbe) / self.NMBE_THRESHOLD))
         r2_norm = safe_clamp(v.r_squared)

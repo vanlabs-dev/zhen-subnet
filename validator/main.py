@@ -84,8 +84,7 @@ class ZhenValidator:
         # Refuse local mode on mainnet (RC defaults as ground truth are trivially gameable)
         if self.local_mode and self.network in ("finney", "main"):
             raise ValueError(
-                "Local mode is not allowed on mainnet. "
-                "Use --no-local-mode with a running BOPTEST service."
+                "Local mode is not allowed on mainnet. Use --no-local-mode with a running BOPTEST service."
             )
 
         # Load manifest
