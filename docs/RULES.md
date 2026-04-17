@@ -55,6 +55,10 @@ Submissions where all parameters are within 0.1% of the config defaults are auto
 
 Miners who miss rounds have their EMA score decayed exponentially. Persistent absence results in weight removal, preventing offline miners from holding stale emissions.
 
+### 8. Registration cost as Sybil defense
+
+Each miner registration requires burning TAO. Running many low-quality miners is economically unprofitable because registration costs scale linearly while emissions per miner decrease. A single well-calibrated miner consistently outearns multiple poorly-calibrated ones due to the scoring formula's strong quality weighting.
+
 ## Scoring and Weights
 
 - Weights are set once per tempo (360 blocks, approximately 72 minutes)

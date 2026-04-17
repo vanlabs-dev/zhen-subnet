@@ -42,6 +42,13 @@ class ResponseParser:
                 logger.debug(f"Miner {uid}: no calibrated_params in response")
                 continue
 
+            if not isinstance(response.calibrated_params, dict):
+                logger.warning(
+                    f"Miner {uid}: calibrated_params is {type(response.calibrated_params).__name__}, "
+                    "expected dict. Skipping."
+                )
+                continue
+
             if len(response.calibrated_params) > MAX_PARAMS:
                 logger.warning(f"Miner {uid}: too many params ({len(response.calibrated_params)}), skipping")
                 continue

@@ -100,6 +100,14 @@ def load_state(state_path: Path | None = None) -> dict[str, Any] | None:
         logger.warning(f"Invalid ema_scores in state file, starting fresh: {e}")
         return None
 
+    # Validate EMA score range. Normalized scores from ScoringEngine.compute() sum to 1.0,
+    # so no individual score should exceed 1.0 in normal operation. Out-of-range values
+    # indicate file tampering or a bug; refuse to load rather than poison the next round.
+    for uid, score in raw["ema_scores"].items():
+        if score < 0 or score > 1.0:
+            logger.warning(f"EMA score for UID {uid} out of range ({score}), state may be tampered. Starting fresh.")
+            return None
+
     # Reject state from incompatible spec versions
     saved_version = raw.get("spec_version", 0)
     if saved_version != protocol.__spec_version__:

@@ -2,17 +2,22 @@
 
 Each test encodes a specific attack the scoring and verification pipeline
 must defeat: convergence gaming via fabricated simulations_used values,
-non-finite metric injection, and exceeding the self-reported budget.
+non-finite metric injection, exceeding the self-reported budget,
+state-file tampering, and malformed response payloads.
 """
 
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from protocol.synapse import CalibrationSynapse
 from scoring.engine import ScoringEngine, VerifiedResult
+from validator.network.result_receiver import ResponseParser
+from validator.state import load_state, save_state
 from validator.verification.engine import VerificationEngine
 
 TEST_CASE: dict[str, Any] = {
@@ -147,3 +152,43 @@ def test_convergence_gaming_bounded() -> None:
     assert liar_score - max_budget_score <= engine.WEIGHTS["convergence"] + 1e-9
     # Sanity: liar strictly beats max-budget-user by the convergence spread.
     assert math.isclose(liar_score - max_budget_score, engine.WEIGHTS["convergence"], abs_tol=1e-9)
+
+
+def test_state_rejects_inflated_ema(tmp_path: Path) -> None:
+    """Attack: tamper with state file to inflate EMA score above 1.0.
+
+    Normalized EMA scores live in [0, 1]; load_state must reject anything outside
+    that range so a poisoned file cannot pre-load a miner with overweight history.
+    """
+    state_path = tmp_path / "state.json"
+    save_state(round_count=1, ema_scores={1: 2.5}, round_id="round-0", state_path=state_path)
+    assert load_state(state_path=state_path) is None
+
+
+def test_state_rejects_negative_ema(tmp_path: Path) -> None:
+    """Negative EMA scores are also out of range and must be refused on load."""
+    state_path = tmp_path / "state.json"
+    save_state(round_count=1, ema_scores={1: -0.1}, round_id="round-0", state_path=state_path)
+    assert load_state(state_path=state_path) is None
+
+
+def test_parser_rejects_list_params() -> None:
+    """Attack: send calibrated_params as a list to crash the verification engine."""
+    parser = ResponseParser()
+    response = CalibrationSynapse()
+    response.calibrated_params = [1.0, 2.0, 3.0]  # type: ignore[assignment]
+    response.simulations_used = 100
+
+    submissions = parser.parse_responses([response], uids=[7])
+    assert 7 not in submissions
+
+
+def test_parser_rejects_string_params() -> None:
+    """Attack: send calibrated_params as a string to crash the verification engine."""
+    parser = ResponseParser()
+    response = CalibrationSynapse()
+    response.calibrated_params = "not a dict"  # type: ignore[assignment]
+    response.simulations_used = 100
+
+    submissions = parser.parse_responses([response], uids=[7])
+    assert 7 not in submissions

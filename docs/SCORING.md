@@ -95,7 +95,7 @@ After computing composite scores, they are normalized into a weight vector that 
 weight_i = composite_i / sum(all composites)
 ```
 
-If all composites are zero (all miners failed), equal weights are assigned: `1.0 / n` for each miner.
+If all composites are zero (all miners failed), the engine returns an empty weight dict and the validator falls back to copying the current on-chain weights so emissions are not handed to failed submissions.
 
 ## EMA (Exponential Moving Average)
 
@@ -167,3 +167,13 @@ Miners who do not submit in a round have their EMA score decayed by (1 - alpha) 
 ## Anti-Gaming Protections
 
 Submissions where all parameters are within 0.1% of config defaults are rejected. Miners must run actual calibration. Additionally, validators use deterministic but unpredictable train/test splits, and held-out test data is never sent to miners.
+
+## Known Limitations
+
+### Sybil dilution
+
+In a normalized scoring system, every miner with composite > 0 receives some weight. An attacker running many low-quality miners can dilute a legitimate miner's share. The primary defense is Bittensor's registration cost: each miner slot requires TAO to register. Additionally, the scoring formula heavily penalizes poor calibration (CVRMSE and NMBE above ASHRAE thresholds clamp to 0), limiting how much weight low-quality miners can capture.
+
+### Self-reported convergence
+
+The simulations_used field is self-reported by miners (10% of composite score). A miner can claim fewer simulations than actually used for a small convergence bonus. This advantage is bounded at 10% of the composite score and does not affect the 90% that depends on actual calibration quality.
