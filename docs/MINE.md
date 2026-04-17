@@ -93,6 +93,7 @@ Override defaults with CLI args in docker-compose.yml or pass environment variab
 | `--wallet-hotkey` | str | `default` | Wallet hotkey |
 | `--algorithm` | str | `bayesian` | Calibration algorithm |
 | `--n-calls` | int | 100 | Number of optimization iterations per round |
+| `--random-seed` | int | None | Seed for the calibration algorithm. Default (None) randomizes per instance. See "Randomization and miner diversity" below. |
 | `--axon-port` | int | 8091 | Port for the axon server to listen on |
 | `--log-level` | str | `INFO` | Logging level: DEBUG, INFO, WARNING, ERROR |
 
@@ -134,6 +135,18 @@ See `docs/SCORING.md` for full scoring details.
 - The default Bayesian optimizer (scikit-optimize) is a solid baseline.
 - Custom algorithms can be added by implementing a new calibrator class in `miner/calibration/`.
 - Focus on parameter space exploration. The RC model has meaningful physical constraints that can guide the search.
+
+## Randomization and miner diversity
+
+By default, each miner instance uses a fresh random seed for Bayesian optimization. This is intentional. If all miners ran with the same seed, they would produce identical calibration results and the subnet could not differentiate between them under power-law scoring.
+
+Advanced operators can pin the seed for reproducibility:
+
+```bash
+python -m miner.main --random-seed 42 --netuid 456 --network test
+```
+
+This is useful for reproducing a specific miner's behavior, comparing algorithms, or debugging. In competitive production mining, leave `--random-seed` unset.
 
 ## Monitoring
 

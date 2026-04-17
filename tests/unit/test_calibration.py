@@ -113,7 +113,7 @@ def test_objective_sim_count() -> None:
 def test_bayesian_calibrator_runs() -> None:
     """BayesianCalibrator with n_calls=10 returns valid CalibrationOutput."""
     training_data = _make_training_data()
-    calibrator = BayesianCalibrator(n_calls=10, n_initial_points=5)
+    calibrator = BayesianCalibrator(n_calls=10, n_initial_points=5, random_state=42)
     output = calibrator.calibrate(
         test_case_id=TEST_CASE_ID,
         training_data=training_data,
@@ -147,7 +147,7 @@ def test_bayesian_calibrator_improves() -> None:
     random_cvrmse = objective(midpoint_values, PARAM_NAMES)
 
     # Run calibrator
-    calibrator = BayesianCalibrator(n_calls=50, n_initial_points=10)
+    calibrator = BayesianCalibrator(n_calls=50, n_initial_points=10, random_state=42)
     output = calibrator.calibrate(
         test_case_id=TEST_CASE_ID,
         training_data=training_data,
@@ -165,7 +165,7 @@ def test_bayesian_calibrator_improves() -> None:
 async def test_calibration_engine_dispatch() -> None:
     """CalibrationEngine dispatches to BayesianCalibrator and returns output."""
     training_data = _make_training_data()
-    engine = CalibrationEngine(algorithm="bayesian")
+    engine = CalibrationEngine(algorithm="bayesian", random_state=42)
 
     challenge = {
         "test_case_id": TEST_CASE_ID,

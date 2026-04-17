@@ -18,13 +18,20 @@ from miner.calibration.objective import CalibrationObjective
 class BayesianCalibrator:
     """Reference calibrator using Gaussian Process-based Bayesian optimization."""
 
-    def __init__(self, n_calls: int = 500, n_initial_points: int = 20, random_state: int = 42) -> None:
+    def __init__(
+        self,
+        n_calls: int = 500,
+        n_initial_points: int = 20,
+        random_state: int | None = None,
+    ) -> None:
         """Initialize the Bayesian calibrator.
 
         Args:
             n_calls: Maximum number of objective evaluations.
             n_initial_points: Number of random initial evaluations before GP fitting.
-            random_state: Seed for reproducibility.
+            random_state: Seed for reproducibility. None means each instance uses
+                a fresh random seed, producing different optimization trajectories.
+                Set to a fixed integer only for testing or reproducibility studies.
         """
         self.n_calls = n_calls
         self.n_initial_points = n_initial_points

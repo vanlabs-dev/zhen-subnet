@@ -62,6 +62,7 @@ class ZhenMiner:
         algorithm: str = "bayesian",
         n_calls: int = 100,
         axon_port: int = 8091,
+        random_seed: int | None = None,
     ) -> None:
         """Initialize the miner neuron.
 
@@ -73,6 +74,9 @@ class ZhenMiner:
             algorithm: Calibration algorithm to use.
             n_calls: Number of optimization iterations.
             axon_port: Port for the axon server to listen on.
+            random_seed: Optional seed for the calibration algorithm. Default None
+                means each miner runs with a fresh random seed so the subnet sees
+                diverse outputs. Pin to an integer only for reproducibility tests.
         """
         self.netuid = netuid
         self.network = network
@@ -80,7 +84,11 @@ class ZhenMiner:
         self.axon_port = axon_port
 
         # Calibration engine
-        self.calibration_engine = CalibrationEngine(algorithm=algorithm, n_calls=n_calls)
+        self.calibration_engine = CalibrationEngine(
+            algorithm=algorithm,
+            n_calls=n_calls,
+            random_state=random_seed,
+        )
         manifest_version = self._load_manifest_version()
         self.handler = CalibrationHandler(self.calibration_engine, manifest_version=manifest_version)
 
@@ -206,6 +214,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wallet-hotkey", type=str, default="default", help="Wallet hotkey")
     parser.add_argument("--algorithm", type=str, default="bayesian", help="Calibration algorithm")
     parser.add_argument("--n-calls", type=int, default=100, help="Optimization iterations")
+    parser.add_argument(
+        "--random-seed",
+        type=int,
+        default=None,
+        help=(
+            "Random seed for calibration algorithm. Default (None) means each miner "
+            "uses a fresh random seed, producing diverse outputs across the subnet. "
+            "Set to a fixed integer only for reproducibility testing."
+        ),
+    )
     parser.add_argument("--axon-port", type=int, default=8091, help="Axon server port")
     parser.add_argument(
         "--log-level",
@@ -228,5 +246,6 @@ if __name__ == "__main__":
         algorithm=args.algorithm,
         n_calls=args.n_calls,
         axon_port=args.axon_port,
+        random_seed=args.random_seed,
     )
     asyncio.run(miner.run())

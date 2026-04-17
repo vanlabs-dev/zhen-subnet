@@ -18,15 +18,25 @@ from miner.calibration.bayesian import BayesianCalibrator
 class CalibrationEngine:
     """Dispatches calibration challenges to the selected algorithm."""
 
-    def __init__(self, algorithm: str = "bayesian", n_calls: int = 500) -> None:
+    def __init__(
+        self,
+        algorithm: str = "bayesian",
+        n_calls: int = 500,
+        random_state: int | None = None,
+    ) -> None:
         """Initialize the calibration engine.
 
         Args:
             algorithm: Algorithm to use. Currently only "bayesian" is supported.
             n_calls: Number of optimization iterations for Bayesian calibrator.
+            random_state: Optional seed for the calibration algorithm. Default None
+                means each miner runs with a fresh random seed, enabling diverse
+                miner outputs across the subnet. Set to a fixed integer only for
+                reproducibility testing.
         """
         self.algorithm = algorithm
         self.n_calls = n_calls
+        self.random_state = random_state
 
     async def calibrate(self, challenge: dict[str, Any]) -> CalibrationOutput:
         """Run calibration for a given challenge.
@@ -69,7 +79,7 @@ class CalibrationEngine:
         scoring_outputs = self._get_scoring_outputs(test_case_id)
 
         if self.algorithm == "bayesian":
-            calibrator = BayesianCalibrator(n_calls=self.n_calls)
+            calibrator = BayesianCalibrator(n_calls=self.n_calls, random_state=self.random_state)
             return calibrator.calibrate(
                 test_case_id=test_case_id,
                 training_data=training_data,
