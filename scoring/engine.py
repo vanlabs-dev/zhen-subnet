@@ -83,8 +83,8 @@ class ScoringEngine:
 
         Returns:
             Mapping of miner UID to normalized weight (sums to 1.0).
-            Returns equal weights if all composites are zero.
-            Returns empty dict if no miners.
+            Returns empty dict if no miners or all miners failed/scored zero;
+            the caller is expected to fall back to the on-chain weight copy.
         """
         scores: dict[int, float] = {}
         for uid, v in verified.items():
@@ -94,9 +94,6 @@ class ScoringEngine:
         total = sum(scores.values())
         if total > 0:
             return {uid: s / total for uid, s in scores.items()}
-        n = len(scores)
-        if n > 0:
-            return {uid: 1.0 / n for uid in scores}
         return {}
 
     def compute_raw(self, verified: dict[int, VerifiedResult], sim_budget: int = 1000) -> dict[int, float]:

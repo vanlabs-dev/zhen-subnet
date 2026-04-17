@@ -27,7 +27,7 @@ def compute_cvrmse(predicted: dict[str, list[float]], measured: dict[str, list[f
         if len(m) == 0:
             continue
         mean_m = np.mean(m)
-        if mean_m == 0 or not np.isfinite(mean_m):
+        if abs(mean_m) < 1e-6 or not np.isfinite(mean_m):
             continue
         rmse = np.sqrt(np.mean((p - m) ** 2))
         value = float(rmse / mean_m)
@@ -55,7 +55,7 @@ def compute_nmbe(predicted: dict[str, list[float]], measured: dict[str, list[flo
         if n == 0:
             continue
         mean_m = np.mean(m)
-        if mean_m == 0 or not np.isfinite(mean_m):
+        if abs(mean_m) < 1e-6 or not np.isfinite(mean_m):
             continue
         value = float(np.sum(p - m) / (n * mean_m))
         if np.isfinite(value):

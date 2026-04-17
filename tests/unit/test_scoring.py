@@ -151,8 +151,8 @@ class TestScoringEngine:
         assert weights[1] == 0.0
         assert weights[0] == 1.0
 
-    def test_scoring_engine_all_zero(self) -> None:
-        """All miners score 0 should get equal weights."""
+    def test_all_failed_returns_empty(self) -> None:
+        """All miners failed: compute returns {} so caller can fall back to chain weights."""
         engine = ScoringEngine()
         verified = {
             0: VerifiedResult(reason="TIMEOUT"),
@@ -160,10 +160,7 @@ class TestScoringEngine:
             2: VerifiedResult(reason="INVALID_PARAMS"),
         }
         weights = engine.compute(verified)
-
-        expected = 1.0 / 3.0
-        for uid in weights:
-            assert abs(weights[uid] - expected) < 1e-10
+        assert weights == {}
 
     def test_scoring_engine_single_miner(self) -> None:
         """One miner should get weight 1.0."""

@@ -91,9 +91,18 @@ def test_inf_score_ignored() -> None:
     assert 1 not in tracker.scores
 
 
-def test_nan_does_not_corrupt_existing() -> None:
-    """NaN score for an existing UID should leave its EMA unchanged."""
+def test_nan_score_triggers_decay() -> None:
+    """NaN score for an existing UID should trigger absence decay, not freeze."""
     tracker = EMATracker(alpha=0.3)
     tracker.scores[1] = 0.5
     tracker.update({1: float("nan")})
-    assert tracker.scores[1] == 0.5
+    # UID 1 is treated as absent, so its EMA decays by (1 - alpha)
+    assert abs(tracker.scores[1] - 0.5 * 0.7) < 1e-9
+
+
+def test_inf_score_triggers_decay() -> None:
+    """Inf score for an existing UID should trigger absence decay, not freeze."""
+    tracker = EMATracker(alpha=0.3)
+    tracker.scores[1] = 0.5
+    tracker.update({1: float("inf")})
+    assert abs(tracker.scores[1] - 0.5 * 0.7) < 1e-9

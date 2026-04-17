@@ -1,1 +1,1 @@
-"""Validator utilities: hashing, logging, and health monitoring."""
+"""Validator utilities: structured logging."""

@@ -30,21 +30,24 @@ class EMATracker:
     def update(self, round_scores: dict[int, float]) -> None:
         """Blend current round scores into EMA history.
 
+        Non-finite scores are treated as absent so the miner's prior EMA
+        decays rather than freezing.
+
         Args:
             round_scores: Mapping of miner UID to composite score for
                 the current round.
         """
-        for uid, score in round_scores.items():
-            if not math.isfinite(score):
-                continue
+        finite_scores = {uid: score for uid, score in round_scores.items() if math.isfinite(score)}
+
+        for uid, score in finite_scores.items():
             if uid in self.scores:
                 self.scores[uid] = self.alpha * score + (1 - self.alpha) * self.scores[uid]
             else:
                 self.scores[uid] = score
 
-        # Decay absent miners toward zero and prune negligible scores
+        # Decay absent miners (including those with non-finite scores) and prune negligible scores
         for uid in list(self.scores.keys()):
-            if uid not in round_scores:
+            if uid not in finite_scores:
                 self.scores[uid] = (1 - self.alpha) * self.scores[uid]
                 if self.scores[uid] < 1e-6:
                     del self.scores[uid]

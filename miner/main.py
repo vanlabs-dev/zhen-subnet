@@ -165,7 +165,7 @@ class ZhenMiner:
 
         # Register signal handlers for graceful shutdown
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             for sig in (signal.SIGTERM, signal.SIGINT):
                 loop.add_signal_handler(sig, lambda: asyncio.create_task(self._shutdown()))
         except NotImplementedError:

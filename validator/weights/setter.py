@@ -165,7 +165,7 @@ class WeightSetter:
         uids_arr: npt.NDArray[np.int64] = np.array(uids, dtype=np.int64)
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await asyncio.wait_for(
                 loop.run_in_executor(None, self._set_weights_sync, uids_arr, weights_arr),
                 timeout=float(self.WEIGHT_TIMEOUT_SECONDS),

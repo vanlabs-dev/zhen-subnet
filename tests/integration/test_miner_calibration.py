@@ -160,7 +160,7 @@ async def test_end_to_end_round_with_miner() -> None:
     test_case = test_case_selector.select(round_id, orchestrator.manifest)
     _train_period, test_period = split_generator.compute(round_id, test_case["id"])
     held_out_data = await orchestrator.generate_ground_truth(test_case, test_period, local_mode=True)
-    verification_config = orchestrator._build_verification_config(test_case)
+    verification_config = orchestrator.build_verification_config(test_case)
     sim_budget = verification_config.get("simulation_budget", 1000)
 
     verified = await verification_engine.verify_all(

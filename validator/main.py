@@ -241,7 +241,7 @@ class ZhenValidator:
         """Main loop: run rounds at tempo intervals."""
         # Register signal handlers for graceful shutdown
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             for sig in (signal.SIGTERM, signal.SIGINT):
                 loop.add_signal_handler(sig, lambda: asyncio.create_task(self._shutdown()))
         except NotImplementedError:
@@ -350,7 +350,7 @@ class ZhenValidator:
         )
 
         # 4. Build test case config
-        config = self.orchestrator._load_test_case_config(test_case["id"])
+        config = self.orchestrator.load_test_case_config(test_case["id"])
 
         # 5. Build CalibrationSynapse
         synapse = CalibrationSynapse(
@@ -387,14 +387,15 @@ class ZhenValidator:
             return {"round_id": round_id, "scores": {}, "weights": {}}
 
         # 7. Build verification config and verify
-        verification_config = self.orchestrator._build_verification_config(test_case)
+        verification_config = self.orchestrator.build_verification_config(test_case)
+        sim_budget = verification_config.get("simulation_budget", 1000)
         logger.info("Verifying submissions...")
         verified = await self.verification_engine.verify_all(
-            submissions, verification_config, test_period, held_out_data
+            submissions, verification_config, test_period, held_out_data, sim_budget=sim_budget
         )
 
         # 8. Compute scores
-        scores = self.scoring_engine.compute(verified)
+        scores = self.scoring_engine.compute(verified, sim_budget=sim_budget)
         logger.info(f"Scores: {scores}")
 
         # Log per-metric breakdown for each miner

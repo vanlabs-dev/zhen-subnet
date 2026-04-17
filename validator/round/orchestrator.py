@@ -72,7 +72,7 @@ class RoundOrchestrator:
         Returns:
             Dict mapping scoring output names to lists of values.
         """
-        config = self._load_test_case_config(test_case["id"])
+        config = self.load_test_case_config(test_case["id"])
         default_params = config["defaults"]
         rc = RCNetworkBackend(config, default_params)
         result = rc.run(start_hour=period[0], end_hour=period[1])
@@ -101,7 +101,7 @@ class RoundOrchestrator:
         if self.boptest_url is None:
             raise ValueError("BOPTEST URL not configured. Pass --boptest-url or use local mode.")
 
-        config = self._load_test_case_config(test_case["id"])
+        config = self.load_test_case_config(test_case["id"])
         scoring_outputs = test_case.get("scoring_outputs", config.get("scoring_outputs", []))
         output_mapping: dict[str, dict[str, str]] = config.get("boptest_output_mapping", {})
 
@@ -122,7 +122,7 @@ class RoundOrchestrator:
             output_mapping=output_mapping,
         )
 
-    def _build_verification_config(self, test_case: dict[str, Any]) -> dict[str, Any]:
+    def build_verification_config(self, test_case: dict[str, Any]) -> dict[str, Any]:
         """Build the verification config by merging manifest entry with config.json.
 
         Args:
@@ -131,7 +131,7 @@ class RoundOrchestrator:
         Returns:
             Combined config dict with parameter_bounds, scoring_outputs, etc.
         """
-        config = self._load_test_case_config(test_case["id"])
+        config = self.load_test_case_config(test_case["id"])
         return {
             "id": test_case["id"],
             "parameter_bounds": config["parameter_bounds"],
@@ -140,7 +140,7 @@ class RoundOrchestrator:
             "defaults": config["defaults"],
         }
 
-    def _load_test_case_config(self, test_case_id: str) -> dict[str, Any]:
+    def load_test_case_config(self, test_case_id: str) -> dict[str, Any]:
         """Load config.json for a test case.
 
         Args:
