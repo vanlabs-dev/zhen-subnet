@@ -140,7 +140,9 @@ python -m validator.main --netuid 456 --network test --no-local-mode --boptest-u
 | `TEMPO_BLOCKS` | 360 | Blocks per tempo |
 | `BLOCK_TIME_SECONDS` | 12 | Seconds per block |
 | `DEFAULT_TEMPO_SECONDS` | 4320 | Seconds between rounds (~72 minutes) |
+| `CHALLENGE_TIMEOUT_SECONDS` | 600 | Max seconds miners have to respond to a challenge |
 | `WEIGHT_TIMEOUT_SECONDS` | 120 | Max seconds for chain weight submission |
+| `VERIFICATION_TIMEOUT_SECONDS` | 300 | Max seconds per miner verification run |
 
 ## How a Validation Round Works
 
@@ -149,7 +151,7 @@ python -m validator.main --netuid 456 --network test --no-local-mode --boptest-u
 3. **Generate data split**: Training and test periods are computed using deterministic hashing (`hashlib.sha256`). The split is unpredictable to miners but reproducible by any validator.
 4. **Generate ground truth**: The complex emulator (BOPTEST in full mode, or RC model in local mode) runs the test case to produce reference time-series data for both training and test periods.
 5. **Build synapse**: A `CalibrationSynapse` is constructed with the test case ID, training data, parameter names and bounds, simulation budget, and round metadata.
-6. **Send to miners**: The synapse is sent to all registered miners via Bittensor dendrite. Miners have until near the end of the tempo to respond (timeout = tempo - 300 seconds, minimum 60 seconds).
+6. **Send to miners**: The synapse is sent to all registered miners via Bittensor dendrite. Miners have 600 seconds (CHALLENGE_TIMEOUT_SECONDS) to respond.
 7. **Parse responses**: Valid responses are extracted from returned synapses. Miners that returned `calibrated_params` are included.
 8. **Verify**: The validator re-runs the RC model with each miner's calibrated parameters on the held-out test data and computes CVRMSE, NMBE, and R-squared.
 9. **Score**: Composite scores are computed using the weighted formula (see [SCORING.md](SCORING.md)).
@@ -219,9 +221,21 @@ curl http://localhost:8080/health
 
 Returns JSON with uptime, round count, and last round status. Configure the port with `--health-port`.
 
+The health server binds to `127.0.0.1` (loopback) by default. It is not reachable from outside the host without additional configuration (e.g., a reverse proxy). This is intentional: the endpoint contains operational state that should not be publicly exposed without authentication.
+
 ## State Persistence
 
 The validator saves EMA scores and round count to `~/.zhen/validator_state.json` after each successful round. On restart, it resumes from the last known state. This prevents miners from losing accumulated reputation after a validator restart.
+
+### Crash safety
+
+- Saves are written to a unique temporary file (`validator_state.json.tmp.<pid>.<uuid>`) and fsynced before the atomic rename. A power failure mid-write leaves the previous good state intact.
+- On startup, stale `.tmp` files from prior crashes are cleaned up automatically.
+- The loaded state is validated: it must contain exactly the required keys (`round_count`, `ema_scores`, `last_round_id`, `last_round_timestamp`, `spec_version`), all EMA scores must be in [0, 1], and `spec_version` must match the running code. A version mismatch (e.g., loading spec v1 state into a v2 validator) is rejected to prevent incompatible EMA data from corrupting the weight vector.
+
+### Local mode safeguard
+
+Local mode (RC-based ground truth) is rejected with an error if `--network` is set to `finney` or `main`. This prevents accidental testnet-quality ground truth being used on mainnet.
 
 ## Alerting
 
@@ -230,6 +244,10 @@ Set the `ZHEN_ALERT_WEBHOOK` environment variable to receive notifications on ro
 ```bash
 export ZHEN_ALERT_WEBHOOK=https://discord.com/api/webhooks/your/url
 ```
+
+## Graceful Shutdown
+
+The validator handles SIGTERM and SIGINT (Ctrl-C) gracefully. It polls for a shutdown signal every 1 second during the tempo sleep. When a signal is received, the current round completes (or is abandoned if mid-challenge) and the process exits cleanly, saving state. On Windows, SIGTERM is not available and the KeyboardInterrupt fallback is used instead.
 
 ## PM2 Deployment
 

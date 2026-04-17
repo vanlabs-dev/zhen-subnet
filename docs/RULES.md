@@ -91,7 +91,7 @@ Miners can be deregistered if:
 
 To avoid deregistration:
 
-- Keep your miner online and responsive
+- Keep your miner online and responsive. Validators allow 600 seconds per challenge (CHALLENGE_TIMEOUT_SECONDS). Miners that do not respond within this window are treated as non-submitting for that round.
 - Maintain a composite score above zero (respond to challenges, even imperfectly)
 - Monitor your position:
 

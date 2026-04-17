@@ -2,8 +2,8 @@
 
 <!-- FORMATTING RULE: This document must NEVER contain em dashes or en dashes. Use commas, periods, colons, or parentheses instead. -->
 
-**Status:** Milestone 3 complete
-**Updated:** 2026-04-15
+**Status:** Milestone 3 complete, testnet hardening complete
+**Updated:** 2026-04-17
 
 This document tracks the proving milestones from testnet validation through mainnet launch and revenue. Each milestone has concrete exit criteria. No milestone is skippable.
 
@@ -106,6 +106,26 @@ This document tracks the proving milestones from testnet validation through main
 - Webhook alerting for round failures
 - Weight-setting timeout (120s, prevents chain hang blocking)
 - Anti-default-parameter detection in verification engine
+
+**Testnet hardening (COMPLETE, 2026-04-17):**
+
+Deep red-team audit and subsequent fixes addressing correctness, safety, and operational readiness for external participants:
+
+- Power-law normalization (scores squared before normalizing) to make Sybil attacks unprofitable
+- 5% score floor: miners below 5% of top scorer receive zero weight
+- Spec version bump to v2 (protocol.__spec_version__); v1 EMA state rejected on load
+- Concurrent state-save race condition fixed: unique tmp file per save with fsync before rename; stale tmp files swept on startup
+- EMA scores validated in [0, 1] range on state load; spec_version enforced
+- Local mode refused on mainnet (finney/main) with explicit error
+- Health endpoint bound to 127.0.0.1 (loopback) by default
+- Graceful shutdown polls shutdown flag every 1s during tempo sleep
+- ZhenSimulator.get_outputs() fully implemented (previously raised NotImplementedError)
+- Miner input validation hardened: calibrate() validates test case dir, training data presence, non-empty series, and finite values with explicit error messages
+- BayesianCalibrator bounds validation with clear per-parameter error messages
+- Manifest version mismatch handled gracefully (warning logged, challenge processed)
+- ResponseParser: MAX_METADATA_BYTES=10,000, MAX_PARAMS=50, bool/non-finite/negative simulations_used rejected
+- ManifestLoader rejects duplicate test_case IDs
+- 22 red-team tests added (test_red_team.py): input validation, scoring edge cases, Sybil simulation, power-law correctness, state tampering, concurrent saves
 
 ---
 

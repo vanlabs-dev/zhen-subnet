@@ -17,6 +17,8 @@ CVRMSE = sqrt(mean((predicted - measured)^2)) / mean(measured)
 - Averaged across all scoring outputs (e.g., zone temperature, heating power)
 - ASHRAE Guideline 14 compliance threshold: 30% (0.30)
 - Returns 1.0 (worst) if no valid outputs
+- Outputs where `abs(mean(measured)) < 1e-6` (near-zero mean) are skipped to avoid division instability
+- Outputs with non-finite values are skipped
 
 ### NMBE (Normalized Mean Bias Error)
 
@@ -29,6 +31,8 @@ NMBE = sum(predicted - measured) / (n * mean(measured))
 - Scored as absolute value: |NMBE|
 - ASHRAE Guideline 14 compliance threshold: 10% (0.10)
 - Returns 1.0 (worst) if no valid outputs
+- Outputs where `abs(mean(measured)) < 1e-6` (near-zero mean) are skipped
+- Outputs with non-finite values are skipped
 
 ### R-squared (Coefficient of Determination)
 
@@ -43,6 +47,7 @@ where:
 - Measures how well the model explains variance in measured data
 - Higher is better (max 1.0, can be negative for very poor fits)
 - Returns 0.0 (no explanatory power) if no valid outputs
+- Skipped when `SS_tot == 0` (constant measured signal, no variance to explain)
 
 ### Convergence Efficiency
 
@@ -53,6 +58,8 @@ convergence = 1 - (simulations_used / simulation_budget)
 - Rewards miners who find good solutions with fewer simulation calls
 - Using 100 of 1000 budget = 0.9 efficiency
 - Using all budget = 0.0 efficiency
+- `simulations_used` is clamped to `[0, simulation_budget]` by the response parser before scoring
+- The response parser rejects boolean values, non-finite values, and negative simulation counts
 
 ## Composite Score
 
@@ -69,6 +76,8 @@ composite = 0.50 * cvrmse_norm
           + 0.15 * r2_norm
           + 0.10 * conv_norm
 ```
+
+If any of cvrmse, nmbe, or r_squared is non-finite (NaN or Inf) when the composite is assembled, the composite is forced to 0.0 immediately. This guard runs before the per-metric guards above and protects the weight vector from corruption.
 
 ### Weight breakdown
 
@@ -89,18 +98,25 @@ composite = 0.50 * cvrmse_norm
 
 ## Weight Setting
 
-After computing composite scores, they are normalized using power-law weighting:
+After computing composite scores, the pipeline runs in three steps:
+
+**Step 1: Score floor.** Miners whose composite score is below 5% of the top scorer in the round have their composite set to 0.0. This eliminates the long tail of very low-quality submissions.
+
+**Step 2: Power-law.** Each non-zero composite is squared:
 
 ```
 powered_i = composite_i ^ 2.0
-weight_i  = powered_i / sum(all powered)
 ```
 
-Power-law normalization amplifies quality differences, making it mathematically unprofitable to run many low-quality miners (Sybil attack). A single well-calibrated miner captures >95% of weight against 49 garbage miners.
+Squaring amplifies quality differences. A miner scoring 0.9 gets 0.81 powered weight; one scoring 0.3 gets only 0.09. This makes Sybil attacks (many low-quality miners) mathematically unprofitable.
 
-Additionally, miners scoring below 5% of the top scorer in a round receive zero weight. This prevents extremely low-quality miners from diluting the weight pool.
+**Step 3: Normalize.** Weights sum to 1.0:
 
-If all composites are zero (all miners failed), no weights are set and the validator falls back to copying existing on-chain weights.
+```
+weight_i = powered_i / sum(all powered)
+```
+
+If all composites are zero (all miners failed), `compute()` returns an empty dict and the validator falls back to copying existing on-chain weights (stake-weighted average across validators with permit). No weights are set to equal values.
 
 ## EMA (Exponential Moving Average)
 
@@ -109,7 +125,9 @@ Scores are smoothed across rounds to prevent single-round variance from dominati
 - Alpha: 0.3
 - Formula: `ema_new = 0.3 * current_score + 0.7 * previous_ema`
 - First round for a miner: score is set directly (no history to blend)
+- If a miner's score is non-finite in a round, it is treated as absent and the EMA decays rather than freezing or crashing
 - Final weights for on-chain submission come from the normalized EMA scores
+- Miners whose EMA falls below 1e-6 are pruned from the state
 
 This means consistent performance is rewarded over lucky single rounds.
 
@@ -167,7 +185,7 @@ composite = 0.50 * 0.000 + 0.25 * 0.000 + 0.15 * 0.600 + 0.10 * 0.100
 
 ## EMA Decay
 
-Miners who do not submit in a round have their EMA score decayed by (1 - alpha) per round. After approximately 10 consecutive absences, the miner's weight drops below the pruning threshold and is removed from the weight vector. This prevents offline miners from holding stale weight.
+Miners who do not submit in a round, or whose score is non-finite, have their EMA score decayed by (1 - alpha) = 0.7 per round. After approximately 10 consecutive absences, the miner's weight drops below the pruning threshold (1e-6) and is removed from the weight vector. This prevents offline miners from holding stale weight.
 
 ## Anti-Gaming Protections
 
@@ -177,7 +195,7 @@ Submissions where all parameters are within 0.1% of config defaults are rejected
 
 ### Sybil dilution
 
-In a normalized scoring system, every miner with composite > 0 receives some weight. An attacker running many low-quality miners can dilute a legitimate miner's share. The primary defense is Bittensor's registration cost: each miner slot requires TAO to register. Additionally, the scoring formula heavily penalizes poor calibration (CVRMSE and NMBE above ASHRAE thresholds clamp to 0), limiting how much weight low-quality miners can capture.
+Running many low-quality miners to dilute a legitimate miner's share is mitigated by three layers: (1) power-law normalization (scores squared) makes low-quality weight capture negligible, (2) the 5% score floor zeroes out the weakest submissions entirely, and (3) Bittensor registration cost requires burning TAO per miner slot. The residual risk is that a large number of moderately good Sybil miners (above the floor) could still dilute top miners. Registration cost scales that attack linearly while returns are diminishing due to power-law normalization.
 
 ### Self-reported convergence
 

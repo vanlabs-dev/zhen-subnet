@@ -111,7 +111,7 @@ Override defaults with CLI args in docker-compose.yml or pass environment variab
 4. Miner returns calibrated parameters, simulation count, and training CVRMSE to the validator.
 5. Validator re-runs the RC model with your parameters on held-out test data.
 6. Validator scores using ASHRAE metrics: CVRMSE (50%), NMBE (25%), R-squared (15%), convergence efficiency (10%).
-7. Scores are normalized across all miners and set as weights on-chain.
+7. Scores are normalized across all miners using power-law weighting and set as weights on-chain.
 
 ## Scoring
 
@@ -124,7 +124,7 @@ Scores are computed from four weighted metrics:
 | R-squared | 15% | Close to 1.0 |
 | Convergence | 10% | Fewer simulation calls is better |
 
-Scores are tracked with an exponential moving average (alpha=0.3) across rounds, rewarding consistent performance over lucky one-offs.
+Scores are tracked with an exponential moving average (alpha=0.3) across rounds, rewarding consistent performance over lucky one-offs. Final weights use power-law normalization (scores squared) to amplify quality differences.
 
 See `docs/SCORING.md` for full scoring details.
 
@@ -176,7 +176,17 @@ uv sync --all-groups
 ```
 
 **Miner rejecting all challenges with "not registered on subnet"**
-The miner verifies that the requesting validator is registered on the metagraph. If you see this, check that the validator is properly registered. The miner syncs the metagraph every 10 minutes.
+The miner verifies that the requesting validator's hotkey is present in the metagraph hotkey list. If you see this, check that the validator is properly registered. The miner syncs the metagraph every 10 minutes (600 seconds).
+
+**Manifest version mismatch warning**
+If the validator sends a challenge with a manifest version that does not match the miner's local manifest, the miner logs a warning and processes the challenge anyway. No action is required unless calibration fails for other reasons.
+
+**"Unknown test_case_id" or training data errors**
+The miner validates the challenge before calibrating. Possible error messages and causes:
+- `Unknown test_case_id: <id>` - the test case directory `~/.zhen/test_cases/<id>/config.json` is missing. Run step 5 above.
+- `Training data is empty` - the validator sent an empty training data dict.
+- `Training data for <key> is empty` - one data series has no values.
+- `Training data for <key> contains non-finite values` - the data contains NaN or Inf.
 
 ## Rules
 
