@@ -309,10 +309,13 @@ class ZhenValidator:
                 break
 
             logger.info(f"Sleeping {self.tempo_seconds}s until next round...")
-            try:
-                await asyncio.sleep(self.tempo_seconds)
-            except asyncio.CancelledError:
-                break
+            for _ in range(self.tempo_seconds):
+                if self._shutdown_requested:
+                    break
+                try:
+                    await asyncio.sleep(1)
+                except asyncio.CancelledError:
+                    break
 
         logger.info("Validator shutting down...")
         logger.info("Shutdown complete")
