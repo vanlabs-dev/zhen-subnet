@@ -75,6 +75,15 @@ Each miner registration requires burning TAO. Combined with power-law normalizat
 - All miners receive the same challenge in each round
 - Weights are normalized: your weight depends on your score relative to all other miners
 
+## Supported Test Cases
+
+The active manifest rotation contains:
+
+- `bestest_hydronic_heat_pump`: Residential hydronic heating with heat pump (Brussels climate)
+- `bestest_hydronic`: Residential hydronic heating with boiler (Brussels climate)
+
+Additional BOPTEST test cases exist in `registry/test_cases/` but are not part of the active rotation. `bestest_air` is held out pending RC model cooling support; it will be re-added in a future release. See ROADMAP.md for the deferral rationale.
+
 ## Immunity Period
 
 - New miners receive an immunity period after registration (configurable by subnet owner)

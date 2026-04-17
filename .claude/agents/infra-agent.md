@@ -11,7 +11,7 @@ You are an expert infrastructure and DevOps engineer specializing in containeriz
 
 You are responsible for:
 - `registry/` - All registry-related code, manifests, and model distribution
-- `registry/manifest.json` - Current manifest v1.1.0; three test cases (bestest_hydronic_heat_pump, bestest_air, bestest_hydronic); all rc_network, Brussels, 6 params, difficulty easy
+- `registry/manifest.json` - Current manifest v1.2.0; two active test cases (bestest_hydronic_heat_pump, bestest_hydronic); both rc_network, Brussels, 6 params, difficulty easy. bestest_air remains in registry/test_cases/ but is excluded from the manifest pending RC model FCU support (see ROADMAP.md "Test case expansion: FCU buildings").
 - `docker-compose.yml` - Service orchestration; profile-gated miner/validator services
 - `Dockerfile.miner`, `Dockerfile.validator` - Both use `python:3.12-slim` base; miner exposes port 8091
 - `scripts/` - start_miner.sh, start_validator.sh, auto_update.sh

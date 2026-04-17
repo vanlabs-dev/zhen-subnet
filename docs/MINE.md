@@ -61,7 +61,7 @@ btcli subnet register --netuid 456 --network test --wallet-name zhen-miner --wal
 Miners need local copies of test case data files for the RC network simulation:
 
 ```bash
-for tc in bestest_hydronic_heat_pump bestest_air bestest_hydronic; do
+for tc in bestest_hydronic_heat_pump bestest_hydronic; do
   mkdir -p ~/.zhen/test_cases/$tc
   cp registry/test_cases/$tc/*.json ~/.zhen/test_cases/$tc/
 done

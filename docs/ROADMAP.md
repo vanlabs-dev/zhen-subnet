@@ -2,8 +2,8 @@
 
 <!-- FORMATTING RULE: This document must NEVER contain em dashes or en dashes. Use commas, periods, colons, or parentheses instead. -->
 
-**Status:** Milestone 3 complete, testnet hardening complete
-**Updated:** 2026-04-17
+**Status:** Milestone 3 complete, testnet hardening complete, bestest_air pulled pending FCU support
+**Updated:** 2026-04-18
 
 This document tracks the proving milestones from testnet validation through mainnet launch and revenue. Each milestone has concrete exit criteria. No milestone is skippable.
 
@@ -68,6 +68,8 @@ This document tracks the proving milestones from testnet validation through main
 - Weights set on-chain
 
 **Key insight:** Each test case exposes different thermal dynamics and measurement points. The higher CVRMSE on bestest_hydronic (1.72 vs 0.96 on bestest_hydronic_heat_pump) confirms that miners cannot reuse a single parameter set across building types. This is exactly the diversity pressure the milestone was designed to create.
+
+**Update (2026-04-18):** bestest_air pulled from active rotation in manifest v1.2.0 (spec v3). The case uses a four-pipe fan coil unit that provides both heating and cooling, which the heating-only RC model cannot represent. Miner CVRMSE on bestest_air rounds was catastrophic (4 to 8, far above the 0.30 ASHRAE threshold) regardless of optimization quality. Active rotation is now bestest_hydronic_heat_pump and bestest_hydronic, both of which the RC model can physically calibrate. Re-adding bestest_air is tracked under "Test case expansion: FCU buildings" below.
 
 ---
 
@@ -141,6 +143,19 @@ Deep red-team audit and subsequent fixes addressing correctness, safety, and ope
 - 3 to 5 external miners joined testnet
 - MINE.md documentation sufficient for independent setup (validated by at least one external miner)
 - At least one miner running without direct support from the team
+
+---
+
+## Test case expansion: FCU buildings
+
+The `bestest_air` test case (BESTEST building with four-pipe fan coil unit) is present in `registry/test_cases/` but excluded from the active manifest rotation. The current RC network thermal model does not support:
+
+- Cooling operation (the thermostat only fires when zone temperature is below the heating setpoint)
+- Fan power modeling
+- Supply air tempering dynamics
+- Bi-directional HVAC with separate heating and cooling capacities
+
+Re-adding `bestest_air` requires extending the RC model to support bi-directional HVAC with FCU-specific parameters. Estimated effort: 2 to 3 weeks including physics validation against BOPTEST. Not blocking Milestone 4 or 5; tracked here as an explicit deferral so the test case is not lost.
 
 ---
 

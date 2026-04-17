@@ -82,7 +82,7 @@ btcli subnet register --netuid 456 --network test --wallet-name zhen-validator -
 Validators need local copies of test case data:
 
 ```bash
-for tc in bestest_hydronic_heat_pump bestest_air bestest_hydronic; do
+for tc in bestest_hydronic_heat_pump bestest_hydronic; do
   mkdir -p ~/.zhen/test_cases/$tc
   cp registry/test_cases/$tc/*.json ~/.zhen/test_cases/$tc/
 done
@@ -173,11 +173,12 @@ BOPTEST runs as a Docker service on port 8000 (default). For detailed setup inst
 
 ### Supported test cases
 
-Currently available (3 test cases, deterministic rotation per round):
+Currently active (2 test cases, deterministic rotation per round):
 
 - `bestest_hydronic_heat_pump`: BESTEST reference building with hydronic heat pump (Brussels climate)
-- `bestest_air`: BESTEST reference building with air-based heating system (Brussels climate)
 - `bestest_hydronic`: BESTEST reference building with hydronic heating (Brussels climate)
+
+Held out of rotation: `bestest_air` (BESTEST building with four-pipe fan coil unit). The current RC model is heating-only and cannot represent FCU cooling, so this case is kept in the registry but excluded from the manifest until RC model cooling support lands.
 
 ## Scoring Reference
 
