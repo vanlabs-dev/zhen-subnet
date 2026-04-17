@@ -89,13 +89,18 @@ composite = 0.50 * cvrmse_norm
 
 ## Weight Setting
 
-After computing composite scores, they are normalized into a weight vector that sums to 1.0:
+After computing composite scores, they are normalized using power-law weighting:
 
 ```
-weight_i = composite_i / sum(all composites)
+powered_i = composite_i ^ 2.0
+weight_i  = powered_i / sum(all powered)
 ```
 
-If all composites are zero (all miners failed), the engine returns an empty weight dict and the validator falls back to copying the current on-chain weights so emissions are not handed to failed submissions.
+Power-law normalization amplifies quality differences, making it mathematically unprofitable to run many low-quality miners (Sybil attack). A single well-calibrated miner captures >95% of weight against 49 garbage miners.
+
+Additionally, miners scoring below 5% of the top scorer in a round receive zero weight. This prevents extremely low-quality miners from diluting the weight pool.
+
+If all composites are zero (all miners failed), no weights are set and the validator falls back to copying existing on-chain weights.
 
 ## EMA (Exponential Moving Average)
 

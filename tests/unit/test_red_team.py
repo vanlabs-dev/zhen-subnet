@@ -192,3 +192,78 @@ def test_parser_rejects_string_params() -> None:
 
     submissions = parser.parse_responses([response], uids=[7])
     assert 7 not in submissions
+
+
+def test_sybil_attack_neutralized() -> None:
+    """Attack: 49 garbage miners + 1 legit miner. Legit must keep >90% of weight.
+
+    Garbage miners have composites near zero (failing CVRMSE/NMBE thresholds, all
+    weight from convergence). The relative score floor zeros them out and the
+    power-law amplifies the legit miner's share.
+    """
+    engine = ScoringEngine()
+    legit = VerifiedResult(cvrmse=0.05, nmbe=0.02, r_squared=0.95, simulations_used=150)  # ~0.844
+    garbage = VerifiedResult(cvrmse=0.30, nmbe=0.10, r_squared=0.0, simulations_used=750)  # ~0.025
+
+    verified: dict[int, VerifiedResult] = {0: legit}
+    for uid in range(1, 50):
+        verified[uid] = garbage
+
+    weights = engine.compute(verified)
+    assert weights[0] > 0.90
+    assert math.isclose(sum(weights.values()), 1.0, abs_tol=1e-9)
+
+
+def test_score_floor_zeros_garbage() -> None:
+    """Miners scoring below SCORE_FLOOR_RATIO of the top scorer get zero weight."""
+    engine = ScoringEngine()
+    verified = {
+        0: VerifiedResult(cvrmse=0.05, nmbe=0.02, r_squared=0.95, simulations_used=150),  # ~0.844
+        1: VerifiedResult(cvrmse=0.30, nmbe=0.10, r_squared=0.0, simulations_used=750),  # ~0.025
+    }
+
+    raw = engine.compute_raw(verified)
+    weights = engine.compute(verified)
+
+    # The garbage miner's raw composite is below the floor.
+    assert raw[1] < raw[0] * engine.SCORE_FLOOR_RATIO
+    # ...so it earns zero weight even though it had a positive raw composite.
+    assert weights[1] == 0.0
+    assert math.isclose(weights[0], 1.0, abs_tol=1e-9)
+
+
+def test_power_law_preserves_equality() -> None:
+    """Two miners with identical metrics must still receive equal weight."""
+    engine = ScoringEngine()
+    verified = {
+        0: VerifiedResult(cvrmse=0.10, nmbe=0.02, r_squared=0.85, simulations_used=200),
+        1: VerifiedResult(cvrmse=0.10, nmbe=0.02, r_squared=0.85, simulations_used=200),
+    }
+    weights = engine.compute(verified)
+    assert math.isclose(weights[0], 0.5, abs_tol=1e-9)
+    assert math.isclose(weights[1], 0.5, abs_tol=1e-9)
+
+
+def test_power_law_amplifies_quality() -> None:
+    """Power-law normalization gives the better miner more share than linear would.
+
+    Constructs two close-but-distinct miners (neither floored) and verifies that
+    the better one's weight under compute() exceeds what plain score / sum(scores)
+    would produce.
+    """
+    engine = ScoringEngine()
+    a = VerifiedResult(cvrmse=0.10, nmbe=0.02, r_squared=0.90, simulations_used=200)
+    b = VerifiedResult(cvrmse=0.15, nmbe=0.04, r_squared=0.80, simulations_used=300)
+
+    raw = engine.compute_raw({0: a, 1: b})
+    weights = engine.compute({0: a, 1: b})
+
+    # Neither miner should be floored in this scenario.
+    assert weights[0] > 0 and weights[1] > 0
+
+    # What linear normalization would have produced.
+    linear_total = raw[0] + raw[1]
+    linear_weight_a = raw[0] / linear_total
+
+    # Power-law gives the better miner a strictly larger share than linear.
+    assert weights[0] > linear_weight_a

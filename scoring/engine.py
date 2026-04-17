@@ -52,6 +52,12 @@ class ScoringEngine:
     }
     CVRMSE_THRESHOLD: float = 0.30
     NMBE_THRESHOLD: float = 0.10
+    POWER_EXPONENT: float = 2.0
+    """Exponent applied to raw composites before normalization. p=2 amplifies
+    quality differences so Sybil swarms cannot dilute legitimate miners."""
+    SCORE_FLOOR_RATIO: float = 0.05
+    """Miners whose raw composite is below this fraction of the top scorer
+    receive zero weight. Eliminates the long tail of garbage submissions."""
 
     def _compute_composite(self, v: VerifiedResult, sim_budget: int) -> float:
         """Compute raw composite score for a single miner.
@@ -85,23 +91,42 @@ class ScoringEngine:
     def compute(self, verified: dict[int, VerifiedResult], sim_budget: int = 1000) -> dict[int, float]:
         """Compute normalized weight vector from verification results.
 
+        Pipeline:
+            1. Compute raw composite per miner (failed submissions get 0.0).
+            2. Score floor: zero out any miner below SCORE_FLOOR_RATIO of the top.
+            3. Power-law normalize: w_i = score_i^p / sum(score_j^p).
+
+        The power-law step amplifies quality differences so an attacker running
+        many low-quality miners cannot dilute a legitimate miner's share.
+
         Args:
             verified: Mapping of miner UID to their VerifiedResult.
             sim_budget: Maximum simulation budget for convergence scoring.
 
         Returns:
             Mapping of miner UID to normalized weight (sums to 1.0).
-            Returns empty dict if no miners or all miners failed/scored zero;
+            Returns empty dict if no miners or every miner scored zero;
             the caller is expected to fall back to the on-chain weight copy.
         """
         scores: dict[int, float] = {}
         for uid, v in verified.items():
             scores[uid] = 0.0 if v.reason else self._compute_composite(v, sim_budget)
 
-        # Normalize to weight vector
-        total = sum(scores.values())
+        if not scores:
+            return {}
+
+        # Score floor: zero out miners below the relative threshold of the top scorer.
+        max_score = max(scores.values())
+        if max_score > 0:
+            floor = max_score * self.SCORE_FLOOR_RATIO
+            scores = {uid: (s if s >= floor else 0.0) for uid, s in scores.items()}
+
+        # Power-law normalization: amplify quality differences before normalizing.
+        powered: dict[int, float] = {uid: s ** self.POWER_EXPONENT for uid, s in scores.items()}
+
+        total = sum(powered.values())
         if total > 0:
-            return {uid: s / total for uid, s in scores.items()}
+            return {uid: s / total for uid, s in powered.items()}
         return {}
 
     def compute_raw(self, verified: dict[int, VerifiedResult], sim_budget: int = 1000) -> dict[int, float]:

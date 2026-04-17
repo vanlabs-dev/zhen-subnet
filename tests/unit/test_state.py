@@ -21,7 +21,10 @@ def test_save_and_load_roundtrip(tmp_path: Path) -> None:
     assert loaded["ema_scores"] == {2: 0.45, 4: 0.35, 5: 0.20}
     assert loaded["last_round_id"] == "round-4"
     assert "last_round_timestamp" in loaded
-    assert loaded["spec_version"] == 1
+
+    import protocol
+
+    assert loaded["spec_version"] == protocol.__spec_version__
 
 
 def test_load_missing_file(tmp_path: Path) -> None:
@@ -60,12 +63,12 @@ def test_rejects_incompatible_spec_version(tmp_path: Path) -> None:
     """State saved with a different spec_version is discarded on load."""
     state_path = tmp_path / "state.json"
 
-    # Save with current spec_version (1)
+    # Save with current spec_version
     save_state(round_count=3, ema_scores={1: 0.8}, round_id="round-2", state_path=state_path)
 
-    # Simulate a spec_version bump
+    # Simulate a spec_version bump to an unrelated value
     with patch("validator.state.protocol") as mock_protocol:
-        mock_protocol.__spec_version__ = 2
+        mock_protocol.__spec_version__ = 99
         loaded = load_state(state_path=state_path)
 
     assert loaded is None

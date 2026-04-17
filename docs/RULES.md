@@ -55,9 +55,17 @@ Submissions where all parameters are within 0.1% of the config defaults are auto
 
 Miners who miss rounds have their EMA score decayed exponentially. Persistent absence results in weight removal, preventing offline miners from holding stale emissions.
 
-### 8. Registration cost as Sybil defense
+### 8. Power-law weight normalization
 
-Each miner registration requires burning TAO. Running many low-quality miners is economically unprofitable because registration costs scale linearly while emissions per miner decrease. A single well-calibrated miner consistently outearns multiple poorly-calibrated ones due to the scoring formula's strong quality weighting.
+Weights are computed using power-law normalization (scores squared before normalizing). This amplifies quality differences and makes Sybil attacks (running many low-quality miners) mathematically unprofitable. A single high-quality miner consistently captures >95% of weight against dozens of low-quality competitors.
+
+### 9. Score floor
+
+Miners scoring below 5% of the top scorer in a round receive zero weight. This eliminates the long tail of garbage miners that would otherwise dilute legitimate miners' emissions.
+
+### 10. Registration cost as Sybil defense
+
+Each miner registration requires burning TAO. Combined with power-law normalization and the score floor, running many low-quality miners is economically infeasible: registration costs scale linearly while the captured emissions for sub-quality miners are driven to zero.
 
 ## Scoring and Weights
 
