@@ -18,6 +18,7 @@ dependencies = [
     "httpx",
     "docker",
     "aiohttp>=3.13.5",
+    "tenacity>=8.0",
 ]
 
 [project.optional-dependencies]

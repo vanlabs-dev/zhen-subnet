@@ -125,10 +125,19 @@ class WeightSetter:
                 block_hash = getattr(response, "block_hash", "unknown")
                 logger.info(f"Weights set successfully (block: {block_hash})")
                 return True
-            else:
-                error = getattr(response, "error_message", "unknown error")
-                logger.error(f"Weight setting failed: {error}")
-                return False
+
+            # SDK field naming has drifted across versions; try each before
+            # falling back to the full repr so we never lose evidence.
+            err = (
+                getattr(response, "error_message", None)
+                or getattr(response, "error", None)
+                or getattr(response, "message", None)
+                or getattr(response, "reason", None)
+            )
+            if not err:
+                err = f"no error field on response; repr={response!r}"
+            logger.error(f"Weight setting failed (type={type(response).__name__}): {err}")
+            return False
 
         # Fallback for older SDK versions
         return bool(response)
@@ -183,10 +192,14 @@ class WeightSetter:
 
         Used when scoring fails to avoid missing weight-setting windows.
         Reads the current on-chain weight vector aggregated across
-        validators with permit, weighted by stake.
+        validators with permit, weighted by stake. Empty-state conditions
+        on fresh subnets (no prior weights, no validators with permit,
+        zero total stake) are expected and logged at INFO; genuine errors
+        are logged with full stack traces.
 
         Returns:
-            Mapping of miner UID to weight, or empty dict on failure.
+            Mapping of miner UID to weight, or empty dict on failure or
+            when no chain weights are available to copy.
         """
         if self.metagraph is None:
             logger.warning("No metagraph available for weight fallback")
@@ -195,16 +208,39 @@ class WeightSetter:
         try:
             self.metagraph.sync(subtensor=self.subtensor)
 
+            # Shape guards before any indexing: a fresh subnet can return
+            # empty weight/permit arrays that would otherwise IndexError.
+            if (
+                self.metagraph.weights is None
+                or len(self.metagraph.weights) == 0
+                or self.metagraph.validator_permit is None
+                or len(self.metagraph.validator_permit) == 0
+            ):
+                logger.info(
+                    "Chain has no prior weights to copy (fresh subnet or no validators with permit); "
+                    "fallback unavailable"
+                )
+                return {}
+
             valid_indices = np.where(self.metagraph.validator_permit)[0]
             if len(valid_indices) == 0:
-                logger.warning("No validators with permit found for weight fallback")
+                logger.info("No validators with permit found; chain-copy fallback unavailable")
                 return {}
 
             valid_weights = self.metagraph.weights[valid_indices]
             valid_stakes = self.metagraph.stake[valid_indices]
 
+            # The permit mask can point at weight rows that are themselves empty.
+            if valid_weights.size == 0 or valid_stakes.size == 0:
+                logger.info(
+                    "Validator permit set is non-empty but weight/stake slices are empty; "
+                    "chain-copy fallback unavailable"
+                )
+                return {}
+
             total_stake = float(np.sum(valid_stakes))
             if total_stake == 0:
+                logger.info("Total validator stake is zero; chain-copy fallback unavailable")
                 return {}
 
             normalized_stakes = valid_stakes / total_stake
@@ -216,6 +252,6 @@ class WeightSetter:
             result = {uid: w for uid, w in zip(uids, weights_list, strict=False) if w > 0}
             logger.info(f"Copied {len(result)} weights from chain as fallback")
             return result
-        except Exception as e:
-            logger.error(f"Failed to copy weights from chain: {e}")
+        except Exception:
+            logger.exception("Chain-copy fallback raised unexpectedly")
             return {}

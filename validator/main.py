@@ -4,19 +4,21 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import importlib.util
 import logging
 import os
 import signal
+import time
 from pathlib import Path
 from typing import Any
+
+from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed
 
 if importlib.util.find_spec("bittensor"):
     import bittensor as bt
 else:
     bt = None
-
-import time
 
 import protocol
 from protocol.synapse import CalibrationSynapse
@@ -39,17 +41,22 @@ logger = logging.getLogger(__name__)
 DEFAULT_MANIFEST_PATH = Path(__file__).resolve().parent.parent / "registry" / "manifest.json"
 DEFAULT_NETUID = int(os.environ.get("ZHEN_NETUID", "456"))
 DEFAULT_NETWORK = os.environ.get("ZHEN_NETWORK", "test")
-TEMPO_BLOCKS = 360
 BLOCK_TIME_SECONDS = 12
-DEFAULT_TEMPO_SECONDS = TEMPO_BLOCKS * BLOCK_TIME_SECONDS  # 4320s = 72min
 CHALLENGE_TIMEOUT_SECONDS = 600  # 10 minutes, sufficient for n_calls=500
+
+DEFAULT_CHALLENGE_INTERVAL_SECONDS = 900
+DEFAULT_WEIGHT_CHECK_INTERVAL_SECONDS = 60
+DEFAULT_CLEANUP_INTERVAL_SECONDS = 86400
+DEFAULT_CLEANUP_RETENTION_HOURS = 168
 
 
 class ZhenValidator:
     """Zhen subnet validator. Runs calibration rounds and sets weights.
 
     Operates in local mode (RC model as ground truth) for testnet, or
-    BOPTEST mode for production ground truth generation.
+    BOPTEST mode for production ground truth generation. Three concurrent
+    asyncio loops decouple challenge cadence, weight commit cadence
+    (block-gated), and DB cleanup.
     """
 
     def __init__(
@@ -62,6 +69,10 @@ class ZhenValidator:
         manifest_path: Path = DEFAULT_MANIFEST_PATH,
         boptest_url: str = "http://localhost:8000",
         health_port: int = 8080,
+        challenge_interval_seconds: int = DEFAULT_CHALLENGE_INTERVAL_SECONDS,
+        weight_check_interval_seconds: int = DEFAULT_WEIGHT_CHECK_INTERVAL_SECONDS,
+        cleanup_interval_seconds: int = DEFAULT_CLEANUP_INTERVAL_SECONDS,
+        cleanup_retention_hours: int = DEFAULT_CLEANUP_RETENTION_HOURS,
     ) -> None:
         """Initialize the validator neuron.
 
@@ -74,12 +85,19 @@ class ZhenValidator:
             manifest_path: Path to manifest.json.
             boptest_url: BOPTEST service URL for non-local ground truth.
             health_port: Port for the HTTP health check endpoint.
+            challenge_interval_seconds: Seconds between challenge rounds.
+            weight_check_interval_seconds: Polling cadence for block-gated weight commits.
+            cleanup_interval_seconds: Seconds between DB cleanup runs.
+            cleanup_retention_hours: Hours of history the DB retains.
         """
         self.netuid = netuid
         self.network = network
         self.local_mode = local_mode
         self.boptest_url = boptest_url
-        self.tempo_seconds = DEFAULT_TEMPO_SECONDS
+        self.challenge_interval_seconds = challenge_interval_seconds
+        self.weight_check_interval_seconds = weight_check_interval_seconds
+        self.cleanup_interval_seconds = cleanup_interval_seconds
+        self.cleanup_retention_hours = cleanup_retention_hours
 
         # Refuse local mode on mainnet (RC defaults as ground truth are trivially gameable)
         if self.local_mode and self.network in ("finney", "main"):
@@ -103,7 +121,9 @@ class ZhenValidator:
         self.health = HealthServer(port=health_port)
         self.alerter = WebhookAlerter(webhook_url=os.environ.get("ZHEN_ALERT_WEBHOOK"))
         self.round_count = 0
-        self._shutdown_requested = False
+        self._shutdown: asyncio.Event = asyncio.Event()
+        self._subtensor_lock: asyncio.Lock = asyncio.Lock()
+        self._last_gated_log_time: float = 0.0
 
         # Bittensor components
         self.wallet: Any = None
@@ -240,84 +260,12 @@ class ZhenValidator:
         finally:
             await client.close()
 
-    async def _shutdown(self) -> None:
-        """Signal handler: request graceful shutdown after current round completes."""
-        logger.info("Shutdown signal received, finishing current round...")
-        self._shutdown_requested = True
+    async def _run_challenge_round(self) -> None:
+        """Run a single calibration round and persist per-miner scores.
 
-    async def run(self) -> None:
-        """Main loop: run rounds at tempo intervals."""
-        # Register signal handlers for graceful shutdown
-        try:
-            loop = asyncio.get_running_loop()
-            for sig in (signal.SIGTERM, signal.SIGINT):
-                loop.add_signal_handler(sig, lambda: asyncio.create_task(self._shutdown()))
-        except NotImplementedError:
-            # Windows: signal handlers not supported in asyncio, rely on KeyboardInterrupt
-            pass
-
-        logger.info(f"Starting ZhenValidator (netuid={self.netuid}, tempo={self.tempo_seconds}s)")
-        logger.info(f"Local mode: {self.local_mode}")
-        if not self.local_mode:
-            logger.info(f"BOPTEST URL: {self.boptest_url}")
-            await self._warmup_boptest()
-        logger.info(f"Manifest version: {self.manifest['version']}")
-        logger.info(f"Spec version: {protocol.__spec_version__}")
-
-        logger.info(f"ScoringDB ready (path={self.scoring_db.db_path}, window={self.scoring_window_hours}h)")
-
-        await self.health.start()
-
-        await self.alerter.send(
-            "startup",
-            "Validator started",
-            {
-                "netuid": self.netuid,
-                "network": self.network,
-                "manifest_version": self.manifest["version"],
-                "test_cases": len(self.manifest.get("test_cases", [])),
-            },
-        )
-
-        while True:
-            success = False
-            try:
-                await self.run_round()
-                success = True
-            except Exception as e:
-                logger.error(f"Round failed: {e}", exc_info=True)
-                await self.alerter.send(
-                    "round_failed",
-                    f"Round failed: {e}",
-                    {
-                        "round": self.round_count - 1,
-                        "error": str(e),
-                    },
-                )
-            finally:
-                self.health.record_round(success)
-
-            if self._shutdown_requested:
-                break
-
-            logger.info(f"Sleeping {self.tempo_seconds}s until next round...")
-            for _ in range(self.tempo_seconds):
-                if self._shutdown_requested:
-                    break
-                try:
-                    await asyncio.sleep(1)
-                except asyncio.CancelledError:
-                    break
-
-        logger.info("Validator shutting down...")
-        self.scoring_db.close()
-        logger.info("Shutdown complete")
-
-    async def run_round(self) -> dict[str, Any]:
-        """Run a single calibration round.
-
-        Returns:
-            Round results dict.
+        Does not set weights; that is the weight loop's job. The only
+        external side effect beyond logging is the ScoringDB insert at
+        the end.
         """
         round_id = f"round-{self.round_count}"
         self.round_count += 1
@@ -373,7 +321,7 @@ class ZhenValidator:
 
         if not axons:
             logger.warning("No miners available to query")
-            return {"round_id": round_id, "scores": {}, "weights": {}}
+            return
 
         logger.info(f"Sending challenge to {len(axons)} miners (timeout={CHALLENGE_TIMEOUT_SECONDS}s)")
         timeout = float(CHALLENGE_TIMEOUT_SECONDS)
@@ -386,7 +334,7 @@ class ZhenValidator:
 
         if not submissions:
             logger.warning("No valid submissions received this round")
-            return {"round_id": round_id, "scores": {}, "weights": {}}
+            return
 
         # 7. Build verification config and verify
         verification_config = self.orchestrator.build_verification_config(test_case)
@@ -411,7 +359,7 @@ class ZhenValidator:
                     f"composite={scores.get(uid, 0.0):.4f}"
                 )
 
-        # 9. Persist per-miner scores and compute windowed EMA weights
+        # 9. Persist per-miner scores
         await self.scoring_db.insert_round_scores(
             round_id=round_id,
             test_case=test_case["id"],
@@ -421,35 +369,225 @@ class ZhenValidator:
             composites=scores,
         )
 
+        logger.info(f"=== {round_id} complete (persisted) ===")
+
+    async def _interruptible_sleep(self, seconds: float) -> None:
+        """Sleep until duration elapses or shutdown is signalled.
+
+        Ensures a long sleep cannot delay graceful shutdown by more than
+        the sleep length. Returns immediately if shutdown is already set.
+        """
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(self._shutdown.wait(), timeout=seconds)
+
+    async def _blocks_until_weight_eligible(self) -> int:
+        """Return number of blocks remaining until we may set weights.
+
+        Zero means eligible now. Reads ``weights_rate_limit`` and
+        ``blocks_since_last_update`` directly from chain under the
+        subtensor lock, with tenacity retry for transient RPC failures.
+        """
+        async with self._subtensor_lock:
+            async for attempt in AsyncRetrying(
+                wait=wait_fixed(10),
+                stop=stop_after_attempt(3),
+                reraise=True,
+            ):
+                with attempt:
+                    rate_limit = await asyncio.to_thread(self.subtensor.weights_rate_limit, netuid=self.netuid)
+                    blocks_since = await asyncio.to_thread(
+                        self.subtensor.blocks_since_last_update,
+                        netuid=self.netuid,
+                        uid=self.my_uid,
+                    )
+                    return max(0, int(rate_limit) - int(blocks_since))
+        return 0
+
+    async def _compute_and_commit_weights(self) -> bool:
+        """Read 72h window from DB, compute EMA, commit to chain.
+
+        Returns True on successful commit (including fallback path).
+        Does not perform block-gating; that is the caller's job.
+        Preserves the chain-copy fallback on weight-set failure.
+        """
         window_rows = await self.scoring_db.get_scores_in_window(hours=self.scoring_window_hours)
+        if not window_rows:
+            logger.info("No scores in window; skipping weight commit")
+            return False
+
         weights = compute_window_ema(window_rows, alpha=self.ema_alpha)
+        if not weights:
+            logger.warning("compute_window_ema returned empty; skipping")
+            return False
+
+        num_rounds = len({r.round_id for r in window_rows})
         logger.info(
-            f"EMA weights (window={self.scoring_window_hours}h, "
-            f"rounds={len({r.round_id for r in window_rows})}): {weights}"
+            f"Committing weights (window={self.scoring_window_hours}h, "
+            f"rounds={num_rounds}, miners={len(weights)}): {weights}"
         )
 
-        # 10. Set weights on chain
-        if self.weight_setter is not None and weights:
+        async with self._subtensor_lock:
+            if self.weight_setter is None:
+                logger.warning("No weight_setter configured; skipping commit")
+                return False
+
             success = await self.weight_setter.set_weights(weights)
             if success:
                 logger.info("Weights set on chain successfully")
-            else:
-                logger.warning("Failed to set weights, attempting chain fallback")
-                fallback = self.weight_setter.copy_weights_from_chain()
-                if fallback:
-                    await self.weight_setter.set_weights(fallback)
-                else:
-                    await self.alerter.send("weights_failed", "Failed to set weights on chain")
-        elif self.weight_setter is not None:
-            logger.warning("No weights to set, attempting chain fallback")
+                self._last_gated_log_time = 0.0
+                return True
+
+            logger.warning("Weight set failed; attempting chain fallback")
             fallback = self.weight_setter.copy_weights_from_chain()
             if fallback:
-                await self.weight_setter.set_weights(fallback)
-            else:
-                await self.alerter.send("weights_failed", "Failed to set weights on chain")
+                fallback_success = await self.weight_setter.set_weights(fallback)
+                if fallback_success:
+                    logger.info("Fallback weights committed")
+                    return True
 
-        logger.info(f"=== {round_id} complete ===")
-        return {"round_id": round_id, "scores": scores, "weights": weights}
+            await self.alerter.send("weights_failed", "Failed to set weights on chain")
+            return False
+
+    async def _challenge_loop(self) -> None:
+        """Run calibration rounds at the configured interval until shutdown."""
+        logger.info(f"Challenge loop started (interval={self.challenge_interval_seconds}s)")
+        while not self._shutdown.is_set():
+            try:
+                await self._run_challenge_round()
+            except Exception:
+                logger.exception("Challenge round failed; continuing")
+            await self._interruptible_sleep(self.challenge_interval_seconds)
+        logger.info("Challenge loop exiting")
+
+    async def _weight_loop(self) -> None:
+        """Poll block-rate-limit and commit weights when eligible."""
+        logger.info(f"Weight loop started (check_interval={self.weight_check_interval_seconds}s)")
+
+        try:
+            remaining_at_start = await self._blocks_until_weight_eligible()
+            async with self._subtensor_lock:
+                rate_limit = await asyncio.to_thread(self.subtensor.weights_rate_limit, netuid=self.netuid)
+            logger.info(
+                f"Weight loop gate state: rate_limit={rate_limit} blocks "
+                f"(~{int(rate_limit) * BLOCK_TIME_SECONDS}s), "
+                f"remaining={remaining_at_start} blocks"
+            )
+        except Exception:
+            logger.exception("Failed to read initial gate state; continuing")
+
+        while not self._shutdown.is_set():
+            try:
+                remaining = await self._blocks_until_weight_eligible()
+                if remaining > 0:
+                    sleep_s = min(
+                        remaining * BLOCK_TIME_SECONDS,
+                        self.weight_check_interval_seconds,
+                    )
+                    now = time.monotonic()
+                    if now - self._last_gated_log_time >= 300.0 or self._last_gated_log_time == 0.0:
+                        logger.info(
+                            f"Weights not yet eligible ({remaining} blocks remaining, "
+                            f"~{remaining * BLOCK_TIME_SECONDS}s); next check in {sleep_s}s"
+                        )
+                        self._last_gated_log_time = now
+                    await self._interruptible_sleep(sleep_s)
+                    continue
+
+                await self._compute_and_commit_weights()
+            except Exception:
+                logger.exception("Weight loop iteration failed; continuing")
+
+            await self._interruptible_sleep(self.weight_check_interval_seconds)
+        logger.info("Weight loop exiting")
+
+    async def _cleanup_loop(self) -> None:
+        """Prune DB rows older than the retention window, once per interval."""
+        logger.info(
+            f"Cleanup loop started (interval={self.cleanup_interval_seconds}s, "
+            f"retention={self.cleanup_retention_hours}h)"
+        )
+        while not self._shutdown.is_set():
+            try:
+                deleted = await self.scoring_db.cleanup_older_than(hours=self.cleanup_retention_hours)
+                if deleted:
+                    logger.info(f"Cleanup: deleted {deleted} rows older than {self.cleanup_retention_hours}h")
+            except Exception:
+                logger.exception("Cleanup failed; continuing")
+            await self._interruptible_sleep(self.cleanup_interval_seconds)
+        logger.info("Cleanup loop exiting")
+
+    def _handle_shutdown_signal(self, sig: signal.Signals) -> None:
+        """Signal handler: set the shutdown event so all loops wind down."""
+        logger.warning(f"Received signal {sig.name}; initiating shutdown")
+        self._shutdown.set()
+
+    async def start(self) -> None:
+        """One-time startup: warmup, health server, alerter ping.
+
+        Kept separate from :meth:`run` so tests and orchestration code can
+        drive the loops directly without repeating signal-handler wiring.
+        """
+        logger.info(
+            f"Starting ZhenValidator (netuid={self.netuid}, "
+            f"challenge_interval={self.challenge_interval_seconds}s, "
+            f"weight_check_interval={self.weight_check_interval_seconds}s)"
+        )
+        logger.info(f"Local mode: {self.local_mode}")
+        if not self.local_mode:
+            logger.info(f"BOPTEST URL: {self.boptest_url}")
+            await self._warmup_boptest()
+        logger.info(f"Manifest version: {self.manifest['version']}")
+        logger.info(f"Spec version: {protocol.__spec_version__}")
+        logger.info(f"ScoringDB ready (path={self.scoring_db.db_path}, window={self.scoring_window_hours}h)")
+
+        await self.health.start()
+
+        await self.alerter.send(
+            "startup",
+            "Validator started",
+            {
+                "netuid": self.netuid,
+                "network": self.network,
+                "manifest_version": self.manifest["version"],
+                "test_cases": len(self.manifest.get("test_cases", [])),
+            },
+        )
+
+    async def run(self) -> None:
+        """Start validator and run all loops until shutdown signal."""
+        await self.start()
+
+        try:
+            loop = asyncio.get_running_loop()
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(sig, self._handle_shutdown_signal, sig)
+        except NotImplementedError:
+            # Windows: asyncio cannot install signal handlers; rely on KeyboardInterrupt
+            pass
+
+        logger.info("Starting async loops")
+        tasks = [
+            asyncio.create_task(self._challenge_loop(), name="challenge_loop"),
+            asyncio.create_task(self._weight_loop(), name="weight_loop"),
+            asyncio.create_task(self._cleanup_loop(), name="cleanup_loop"),
+        ]
+
+        try:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        finally:
+            logger.info("Stopping loops")
+            self._shutdown.set()
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+            try:
+                self.scoring_db.close()
+            except Exception:
+                logger.exception("Error closing scoring DB")
+
+            logger.info("Validator shut down cleanly")
 
 
 def parse_args() -> argparse.Namespace:
@@ -463,6 +601,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-local-mode", action="store_false", dest="local_mode", help="Use BOPTEST for ground truth")
     parser.add_argument("--boptest-url", type=str, default="http://localhost:8000", help="BOPTEST service URL")
     parser.add_argument("--health-port", type=int, default=8080, help="Health check HTTP port")
+    parser.add_argument(
+        "--challenge-interval-seconds",
+        type=int,
+        default=DEFAULT_CHALLENGE_INTERVAL_SECONDS,
+        help="Seconds between challenge rounds (default: 900 = 15min)",
+    )
+    parser.add_argument(
+        "--weight-check-interval-seconds",
+        type=int,
+        default=DEFAULT_WEIGHT_CHECK_INTERVAL_SECONDS,
+        help="Seconds between weight-eligibility checks (default: 60)",
+    )
+    parser.add_argument(
+        "--cleanup-interval-seconds",
+        type=int,
+        default=DEFAULT_CLEANUP_INTERVAL_SECONDS,
+        help="Seconds between cleanup runs (default: 86400 = 24h)",
+    )
+    parser.add_argument(
+        "--cleanup-retention-hours",
+        type=int,
+        default=DEFAULT_CLEANUP_RETENTION_HOURS,
+        help="Hours of history to keep in DB (default: 168 = 7 days)",
+    )
     parser.add_argument(
         "--log-level",
         type=str,
@@ -484,5 +646,9 @@ if __name__ == "__main__":
         local_mode=args.local_mode,
         boptest_url=args.boptest_url,
         health_port=args.health_port,
+        challenge_interval_seconds=args.challenge_interval_seconds,
+        weight_check_interval_seconds=args.weight_check_interval_seconds,
+        cleanup_interval_seconds=args.cleanup_interval_seconds,
+        cleanup_retention_hours=args.cleanup_retention_hours,
     )
     asyncio.run(validator.run())
