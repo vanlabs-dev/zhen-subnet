@@ -32,21 +32,33 @@ that might queue work to exhaust miner compute. Value is a rough match
 for the mainnet validator floor across comparable subnets; testnet
 operates below this but is a trusted environment anyway."""
 
+PRODUCTION_NETWORKS: frozenset[str] = frozenset({"finney", "main"})
+"""Networks where validator_permit and stake thresholds are enforced.
+On testnet/local, these checks are skipped because they create a
+chicken-and-egg problem (no validator has permit until it commits
+weights, and miners reject it until it has permit). Matches the inverse
+pattern in validator/main.py:126-129 which refuses --local-mode on
+mainnet for the same operational-safety reason."""
+
 # Module-level metagraph reference for blacklist_fn (must be standalone per SDK v10)
 _metagraph: Any = None
+_network: str | None = None
 
 
 def blacklist_fn(synapse: CalibrationSynapse) -> Tuple[bool, str]:
     """Reject challenges from hotkeys that are not permitted validators.
 
     Three gates, in order of cheapness:
-    1. Hotkey must be registered on the subnet (cheapest, always safe)
-    2. Sender UID must hold ``validator_permit`` on-chain
+    1. Hotkey must be registered on the subnet (always active)
+    2. Sender UID must hold ``validator_permit`` on-chain (production only)
     3. Sender must hold at least ``MIN_VALIDATOR_STAKE_TAO`` stake
+       (production only)
 
     Blocking unregistered / unpermitted / low-stake senders prevents a
     zero-cost attacker from queuing synchronous Bayesian calibrations
-    to saturate miner compute.
+    to saturate miner compute. The permit and stake gates are skipped on
+    non-production networks because testnets are a trusted environment
+    and requiring permit creates a chicken-and-egg bootstrap problem.
     """
     if _metagraph is None:
         return (False, "No metagraph available, accepting all")
@@ -57,22 +69,26 @@ def blacklist_fn(synapse: CalibrationSynapse) -> Tuple[bool, str]:
         return (True, f"Hotkey {requester_hotkey[:16]} not registered on subnet")
 
     uid = _metagraph.hotkeys.index(requester_hotkey)
-    try:
-        has_permit = bool(_metagraph.validator_permit[uid])
-    except (IndexError, TypeError):
-        has_permit = False
-    if not has_permit:
-        return (True, f"Hotkey {requester_hotkey[:16]} (uid={uid}) lacks validator_permit")
 
-    try:
-        stake_tao = float(_metagraph.stake[uid])
-    except (IndexError, TypeError, ValueError):
-        stake_tao = 0.0
-    if stake_tao < MIN_VALIDATOR_STAKE_TAO:
-        return (
-            True,
-            f"Hotkey {requester_hotkey[:16]} (uid={uid}) stake={stake_tao:.2f} < minimum {MIN_VALIDATOR_STAKE_TAO} TAO",
-        )
+    is_production = _network in PRODUCTION_NETWORKS
+
+    if is_production:
+        try:
+            has_permit = bool(_metagraph.validator_permit[uid])
+        except (IndexError, TypeError):
+            has_permit = False
+        if not has_permit:
+            return (True, f"Hotkey {requester_hotkey[:16]} (uid={uid}) lacks validator_permit")
+
+        try:
+            stake_tao = float(_metagraph.stake[uid])
+        except (IndexError, TypeError, ValueError):
+            stake_tao = 0.0
+        if stake_tao < MIN_VALIDATOR_STAKE_TAO:
+            return (
+                True,
+                f"Hotkey {requester_hotkey[:16]} (uid={uid}) stake={stake_tao:.2f} < minimum {MIN_VALIDATOR_STAKE_TAO} TAO",
+            )
 
     return (False, "")
 
@@ -157,7 +173,7 @@ class ZhenMiner:
 
     def _init_bittensor(self, wallet_name: str, wallet_hotkey: str) -> None:
         """Initialize Bittensor SDK v10 components and register axon handler."""
-        global _metagraph
+        global _metagraph, _network
 
         logger.info(f"Connecting to {self.network} (netuid={self.netuid})")
 
@@ -165,6 +181,7 @@ class ZhenMiner:
         self.subtensor = bt.Subtensor(network=self.network)
         self.metagraph = self.subtensor.metagraph(netuid=self.netuid)
         _metagraph = self.metagraph
+        _network = self.network
 
         # Fail fast if we are not registered. Without registration no validator
         # can address us, and sitting idle with no log signal is the worst
@@ -180,6 +197,14 @@ class ZhenMiner:
 
         my_uid = self.metagraph.hotkeys.index(my_hotkey)
         logger.info(f"Miner registered on subnet (uid={my_uid}, hotkey={my_hotkey[:16]}...)")
+
+        if self.network in PRODUCTION_NETWORKS:
+            logger.info(f"Production network ({self.network}): validator_permit and stake checks ENABLED")
+        else:
+            logger.info(
+                f"Non-production network ({self.network}): validator_permit and stake checks "
+                f"BYPASSED (testnet trust model)"
+            )
 
         self.axon = bt.Axon(wallet=self.wallet, port=self.axon_port)
 
