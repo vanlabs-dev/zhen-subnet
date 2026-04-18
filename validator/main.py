@@ -81,9 +81,9 @@ class ZhenValidator:
         manifest_path: Path = DEFAULT_MANIFEST_PATH,
         boptest_url: str = "http://localhost:8000",
         health_port: int = 8080,
-        challenge_interval_seconds: int = DEFAULT_CHALLENGE_INTERVAL_SECONDS,
-        weight_check_interval_seconds: int = DEFAULT_WEIGHT_CHECK_INTERVAL_SECONDS,
-        cleanup_interval_seconds: int = DEFAULT_CLEANUP_INTERVAL_SECONDS,
+        challenge_interval_seconds: float = DEFAULT_CHALLENGE_INTERVAL_SECONDS,
+        weight_check_interval_seconds: float = DEFAULT_WEIGHT_CHECK_INTERVAL_SECONDS,
+        cleanup_interval_seconds: float = DEFAULT_CLEANUP_INTERVAL_SECONDS,
         cleanup_retention_hours: int = DEFAULT_CLEANUP_RETENTION_HOURS,
     ) -> None:
         """Initialize the validator neuron.
