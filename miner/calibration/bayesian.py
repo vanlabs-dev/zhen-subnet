@@ -6,6 +6,7 @@ to search the parameter space and minimize CVRMSE on training data.
 
 from __future__ import annotations
 
+import asyncio
 import math
 
 from skopt import gp_minimize
@@ -37,7 +38,7 @@ class BayesianCalibrator:
         self.n_initial_points = n_initial_points
         self.random_state = random_state
 
-    def calibrate(
+    async def calibrate(
         self,
         test_case_id: str,
         training_data: dict[str, list[float]],
@@ -100,8 +101,12 @@ class BayesianCalibrator:
             """Wrapper matching skopt's expected signature."""
             return objective(param_values, parameter_names)
 
-        # Run optimization
-        result = gp_minimize(
+        # Run optimization off the event loop so the miner's axon, metagraph
+        # sync, and signal handling stay responsive during the GP fit.
+        # gp_minimize / skopt / numpy release the GIL during optimization,
+        # so thread offload genuinely parallelizes with the event loop.
+        result = await asyncio.to_thread(
+            gp_minimize,
             skopt_objective,
             dimensions,
             n_calls=effective_calls,

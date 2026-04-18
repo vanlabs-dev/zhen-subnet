@@ -76,15 +76,16 @@ class CalibrationHandler:
         return synapse
 
     def blacklist(self, synapse: CalibrationSynapse) -> tuple[bool, str]:
-        """Determine whether to blacklist an incoming request.
+        """Delegate to the module-level blacklist_fn so the axon and this
+        handler cannot disagree on the gate.
 
-        Args:
-            synapse: The incoming synapse to evaluate.
-
-        Returns:
-            Tuple of (should_blacklist, reason). Currently accepts all.
+        The current axon wiring in miner/main.py binds blacklist_fn to the
+        synapse forward, not this method. Kept here for future refactors
+        that might reinstate handler-level hooks.
         """
-        return (False, "")
+        from miner.main import blacklist_fn
+
+        return blacklist_fn(synapse)
 
     def priority(self, synapse: CalibrationSynapse) -> float:
         """Assign priority to an incoming request.

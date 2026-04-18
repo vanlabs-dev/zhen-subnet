@@ -74,7 +74,7 @@ async def test_miner_closes_cvrmse_gap() -> None:
     training_data = _make_training_data()
 
     calibrator = BayesianCalibrator(n_calls=200, n_initial_points=20)
-    output = calibrator.calibrate(
+    output = await calibrator.calibrate(
         test_case_id=TEST_CASE_ID,
         training_data=training_data,
         parameter_names=PARAM_NAMES,
@@ -110,7 +110,7 @@ async def test_end_to_end_round_with_miner(tmp_path: Path) -> None:
 
     # Miner 0: BayesianCalibrator with n_calls=100 (good budget)
     calibrator_0 = BayesianCalibrator(n_calls=100, n_initial_points=15, random_state=42)
-    output_0 = calibrator_0.calibrate(
+    output_0 = await calibrator_0.calibrate(
         test_case_id=TEST_CASE_ID,
         training_data=training_data,
         parameter_names=PARAM_NAMES,
@@ -123,7 +123,7 @@ async def test_end_to_end_round_with_miner(tmp_path: Path) -> None:
 
     # Miner 1: BayesianCalibrator with n_calls=50 (moderate budget)
     calibrator_1 = BayesianCalibrator(n_calls=50, n_initial_points=15, random_state=123)
-    output_1 = calibrator_1.calibrate(
+    output_1 = await calibrator_1.calibrate(
         test_case_id=TEST_CASE_ID,
         training_data=training_data,
         parameter_names=PARAM_NAMES,

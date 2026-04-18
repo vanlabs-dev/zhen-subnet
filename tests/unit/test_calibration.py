@@ -5,7 +5,10 @@ Tests the objective function, Bayesian calibrator, and calibration engine.
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -110,11 +113,11 @@ def test_objective_sim_count() -> None:
     assert objective.sim_count == 5
 
 
-def test_bayesian_calibrator_runs() -> None:
+async def test_bayesian_calibrator_runs() -> None:
     """BayesianCalibrator with n_calls=10 returns valid CalibrationOutput."""
     training_data = _make_training_data()
     calibrator = BayesianCalibrator(n_calls=10, n_initial_points=5, random_state=42)
-    output = calibrator.calibrate(
+    output = await calibrator.calibrate(
         test_case_id=TEST_CASE_ID,
         training_data=training_data,
         parameter_names=PARAM_NAMES,
@@ -131,7 +134,7 @@ def test_bayesian_calibrator_runs() -> None:
     assert "algorithm" in output.metadata
 
 
-def test_bayesian_calibrator_improves() -> None:
+async def test_bayesian_calibrator_improves() -> None:
     """With n_calls=50, calibrator achieves better CVRMSE than random."""
     training_data = _make_training_data()
 
@@ -148,7 +151,7 @@ def test_bayesian_calibrator_improves() -> None:
 
     # Run calibrator
     calibrator = BayesianCalibrator(n_calls=50, n_initial_points=10, random_state=42)
-    output = calibrator.calibrate(
+    output = await calibrator.calibrate(
         test_case_id=TEST_CASE_ID,
         training_data=training_data,
         parameter_names=PARAM_NAMES,
@@ -181,3 +184,51 @@ async def test_calibration_engine_dispatch() -> None:
     assert isinstance(output, CalibrationOutput)
     assert len(output.calibrated_params) == 6
     assert output.simulations_used > 0
+
+
+def test_bayesian_calibrate_is_async() -> None:
+    """Calibrate must be a coroutine function so it can yield during gp_minimize."""
+    assert inspect.iscoroutinefunction(BayesianCalibrator.calibrate)
+
+
+async def test_event_loop_remains_responsive_during_calibration() -> None:
+    """A concurrent heartbeat task must continue to tick while calibration runs.
+
+    If gp_minimize were synchronous on the event loop, the heartbeat would
+    stop at the calibrate() await and only resume when it completed. With
+    asyncio.to_thread offload, the heartbeat keeps ticking throughout.
+    """
+    training_data = _make_training_data()
+
+    ticks: list[float] = []
+    stop_heartbeat = asyncio.Event()
+
+    async def heartbeat() -> None:
+        while not stop_heartbeat.is_set():
+            ticks.append(time.monotonic())
+            try:
+                await asyncio.wait_for(stop_heartbeat.wait(), timeout=0.05)
+            except asyncio.TimeoutError:
+                continue
+
+    hb_task = asyncio.create_task(heartbeat())
+    try:
+        calibrator = BayesianCalibrator(n_calls=15, n_initial_points=5, random_state=42)
+        result = await calibrator.calibrate(
+            test_case_id=TEST_CASE_ID,
+            training_data=training_data,
+            parameter_names=PARAM_NAMES,
+            parameter_bounds=PARAM_BOUNDS,
+            simulation_budget=1000,
+            train_start=TRAIN_START,
+            train_end=TRAIN_END,
+            scoring_outputs=SCORING_OUTPUTS,
+        )
+    finally:
+        stop_heartbeat.set()
+        await hb_task
+
+    assert result is not None
+    # If calibration blocked the loop, ticks would cluster at start and end only.
+    # With async offload the heartbeat should tick several times throughout.
+    assert len(ticks) >= 3, f"Event loop froze during calibration (only {len(ticks)} ticks)"

@@ -25,18 +25,54 @@ logger = logging.getLogger(__name__)
 DEFAULT_NETUID = int(os.environ.get("ZHEN_NETUID", "456"))
 DEFAULT_NETWORK = os.environ.get("ZHEN_NETWORK", "test")
 
+MIN_VALIDATOR_STAKE_TAO: float = 1000.0
+"""Minimum stake (TAO) a validator must hold to have its challenges
+accepted. Gates out unregistered, zero-stake, and small-stake senders
+that might queue work to exhaust miner compute. Value is a rough match
+for the mainnet validator floor across comparable subnets; testnet
+operates below this but is a trusted environment anyway."""
+
 # Module-level metagraph reference for blacklist_fn (must be standalone per SDK v10)
 _metagraph: Any = None
 
 
 def blacklist_fn(synapse: CalibrationSynapse) -> Tuple[bool, str]:
-    """Reject requests from hotkeys not registered on the subnet."""
+    """Reject challenges from hotkeys that are not permitted validators.
+
+    Three gates, in order of cheapness:
+    1. Hotkey must be registered on the subnet (cheapest, always safe)
+    2. Sender UID must hold ``validator_permit`` on-chain
+    3. Sender must hold at least ``MIN_VALIDATOR_STAKE_TAO`` stake
+
+    Blocking unregistered / unpermitted / low-stake senders prevents a
+    zero-cost attacker from queuing synchronous Bayesian calibrations
+    to saturate miner compute.
+    """
     if _metagraph is None:
         return (False, "No metagraph available, accepting all")
 
     requester_hotkey = synapse.dendrite.hotkey
+
     if requester_hotkey not in _metagraph.hotkeys:
         return (True, f"Hotkey {requester_hotkey[:16]} not registered on subnet")
+
+    uid = _metagraph.hotkeys.index(requester_hotkey)
+    try:
+        has_permit = bool(_metagraph.validator_permit[uid])
+    except (IndexError, TypeError):
+        has_permit = False
+    if not has_permit:
+        return (True, f"Hotkey {requester_hotkey[:16]} (uid={uid}) lacks validator_permit")
+
+    try:
+        stake_tao = float(_metagraph.stake[uid])
+    except (IndexError, TypeError, ValueError):
+        stake_tao = 0.0
+    if stake_tao < MIN_VALIDATOR_STAKE_TAO:
+        return (
+            True,
+            f"Hotkey {requester_hotkey[:16]} (uid={uid}) stake={stake_tao:.2f} < minimum {MIN_VALIDATOR_STAKE_TAO} TAO",
+        )
 
     return (False, "")
 
@@ -129,6 +165,22 @@ class ZhenMiner:
         self.subtensor = bt.Subtensor(network=self.network)
         self.metagraph = self.subtensor.metagraph(netuid=self.netuid)
         _metagraph = self.metagraph
+
+        # Fail fast if we are not registered. Without registration no validator
+        # can address us, and sitting idle with no log signal is the worst
+        # possible failure mode for an operator trying to diagnose "why isn't
+        # my miner earning?".
+        my_hotkey = self.wallet.hotkey.ss58_address
+        if my_hotkey not in self.metagraph.hotkeys:
+            raise RuntimeError(
+                f"Miner hotkey {my_hotkey} is not registered on netuid {self.netuid}. "
+                f"Register the hotkey with `btcli subnet register --netuid {self.netuid} "
+                f"--network {self.network}` before starting the miner."
+            )
+
+        my_uid = self.metagraph.hotkeys.index(my_hotkey)
+        logger.info(f"Miner registered on subnet (uid={my_uid}, hotkey={my_hotkey[:16]}...)")
+
         self.axon = bt.Axon(wallet=self.wallet, port=self.axon_port)
 
         self.axon.attach(

@@ -80,7 +80,7 @@ class CalibrationEngine:
 
         if self.algorithm == "bayesian":
             calibrator = BayesianCalibrator(n_calls=self.n_calls, random_state=self.random_state)
-            return calibrator.calibrate(
+            return await calibrator.calibrate(
                 test_case_id=test_case_id,
                 training_data=training_data,
                 parameter_names=parameter_names,
