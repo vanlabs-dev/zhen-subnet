@@ -53,6 +53,10 @@ if _HAS_BITTENSOR:
             "round_id",
             "train_start_hour",
             "train_end_hour",
+            "training_data",
+            "parameter_bounds",
+            "simulation_budget",
+            "manifest_version",
         ]
 
 else:

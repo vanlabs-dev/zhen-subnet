@@ -243,6 +243,41 @@ class ScoringDB:
             archived,
         )
 
+    def get_round_count(self) -> int:
+        """Return the persisted round counter, or 0 if not yet set.
+
+        Used on validator startup to continue the round sequence across
+        process restarts so deterministic challenge selection cannot be
+        replayed. Writes are performed by :meth:`set_round_count`.
+        """
+        assert self._conn is not None
+        row = self._conn.execute("SELECT value FROM validator_meta WHERE key = 'round_count'").fetchone()
+        if row is None:
+            return 0
+        try:
+            return int(row[0])
+        except (TypeError, ValueError):
+            return 0
+
+    def set_round_count(self, count: int) -> None:
+        """Persist the round counter atomically.
+
+        Called from the challenge loop after each round increment. The
+        write is guarded by BEGIN/COMMIT so a crash mid-write cannot
+        leave the counter in an inconsistent state.
+        """
+        assert self._conn is not None
+        self._conn.execute("BEGIN")
+        try:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO validator_meta (key, value) VALUES (?, ?)",
+                ("round_count", str(count)),
+            )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+
     async def insert_round_scores(
         self,
         round_id: str,

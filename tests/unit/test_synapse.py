@@ -105,3 +105,25 @@ def test_synapse_optional_results() -> None:
     assert synapse.simulations_used is None
     assert synapse.training_cvrmse is None
     assert synapse.metadata is None
+
+
+def test_required_hash_fields_includes_payload() -> None:
+    """The hash-protected set must include the fields that determine
+    what computation the miner runs. Without this, a MITM can tamper
+    with training_data or parameter_bounds and the signature still
+    validates.
+    """
+    from protocol.synapse import CalibrationSynapse
+
+    s = CalibrationSynapse()
+    expected = {
+        "test_case_id",
+        "round_id",
+        "train_start_hour",
+        "train_end_hour",
+        "training_data",
+        "parameter_bounds",
+        "simulation_budget",
+        "manifest_version",
+    }
+    assert set(s.required_hash_fields) >= expected

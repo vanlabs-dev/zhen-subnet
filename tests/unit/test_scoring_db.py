@@ -281,3 +281,38 @@ async def test_insert_is_atomic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
         assert post == 1
     finally:
         db.close()
+
+
+def test_round_count_default_is_zero(tmp_path: Path) -> None:
+    """A fresh DB has no round_count row; getter returns 0."""
+    db = ScoringDB(db_path=tmp_path / "scoring.db")
+    try:
+        assert db.get_round_count() == 0
+    finally:
+        db.close()
+
+
+def test_round_count_persists_across_instances(tmp_path: Path) -> None:
+    """set_round_count survives close + reopen."""
+    db_path = tmp_path / "scoring.db"
+    db1 = ScoringDB(db_path=db_path)
+    db1.set_round_count(42)
+    db1.close()
+
+    db2 = ScoringDB(db_path=db_path)
+    try:
+        assert db2.get_round_count() == 42
+    finally:
+        db2.close()
+
+
+def test_round_count_overwrites_not_appends(tmp_path: Path) -> None:
+    """Repeated set_round_count stores the latest value only."""
+    db = ScoringDB(db_path=tmp_path / "scoring.db")
+    try:
+        db.set_round_count(1)
+        db.set_round_count(5)
+        db.set_round_count(3)
+        assert db.get_round_count() == 3
+    finally:
+        db.close()

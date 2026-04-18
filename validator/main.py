@@ -143,7 +143,9 @@ class ZhenValidator:
         self.response_parser = ResponseParser()
         self.health = HealthServer(port=health_port)
         self.alerter = WebhookAlerter(webhook_url=os.environ.get("ZHEN_ALERT_WEBHOOK"))
-        self.round_count = 0
+        self.round_count = self.scoring_db.get_round_count()
+        if self.round_count > 0:
+            logger.info(f"Resuming from round_count={self.round_count} (persisted)")
         self._shutdown: asyncio.Event = asyncio.Event()
         self._subtensor_lock: asyncio.Lock = asyncio.Lock()
         self._last_gated_log_time: float = 0.0
@@ -307,6 +309,10 @@ class ZhenValidator:
         """
         round_id = f"round-{self.round_count}"
         self.round_count += 1
+        # Persist before running the round so a crash mid-round still advances
+        # the counter on next boot. Losing one round of attempted work is
+        # strictly better than replaying the same deterministic round_id.
+        self.scoring_db.set_round_count(self.round_count)
         logger.info(f"=== {round_id} starting ===")
 
         # 1. Sync metagraph

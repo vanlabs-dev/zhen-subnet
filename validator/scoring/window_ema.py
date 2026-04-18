@@ -30,7 +30,10 @@ def compute_window_ema(
 
     Returns:
         Mapping of miner UID to normalized weight summing to ``1.0``.
-        Equal weights if all EMA values are zero. Empty dict if no rows.
+        Empty dict if no rows OR every EMA entry has decayed to zero
+        (caller uses emptiness as the signal to fall back to chain-copy
+        rather than publishing uniform weights for miners that all
+        scored zero). Matches ``ScoringEngine.compute``'s contract.
     """
     if not rows:
         return {}
@@ -67,7 +70,7 @@ def compute_window_ema(
     total = sum(ema.values())
     if total > 0:
         return {uid: s / total for uid, s in ema.items()}
-    n = len(ema)
-    if n > 0:
-        return {uid: 1.0 / n for uid in ema}
+    # Every entry decayed to zero: return empty so the caller falls back
+    # to chain-copy rather than publishing uniform weights for miners
+    # that all scored zero. Matches ScoringEngine.compute's contract.
     return {}

@@ -1,6 +1,6 @@
 """Shared synapse definitions for validator-miner communication."""
 
-__spec_version__: int = 3
+__spec_version__: int = 4
 """Protocol spec version. Increment when scoring formula, synapse format,
 or verification logic changes in a backward-incompatible way. Internal
 versioning only, NOT the on-chain weight version.
@@ -12,6 +12,10 @@ History:
     3: Removed bestest_air from active manifest pending RC model cooling
        support (Milestone 5+). Convergence component now averages across
        2 test cases. Invalidates v2 EMA state on load.
+    4: Expanded required_hash_fields to cover challenge payload
+       (training_data, parameter_bounds, simulation_budget,
+       manifest_version). Closes MITM tamper surface identified in
+       audit finding 1.6. Invalidates v3 EMA state on load.
 """
 
 WEIGHT_VERSION_KEY: int = 1000

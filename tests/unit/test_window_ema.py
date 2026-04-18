@@ -123,13 +123,13 @@ def test_prunes_below_threshold() -> None:
     assert 2 in weights
 
 
-def test_all_zero_composites_returns_equal_weights() -> None:
-    """When every EMA is zero, each tracked UID gets an equal share."""
+def test_all_zero_ema_returns_empty() -> None:
+    """When every EMA entry is zero, the contract is empty dict, NOT
+    uniform weights. The caller uses emptiness to trigger chain fallback.
+    """
     rows = _rows_for_rounds([{1: 0.0, 2: 0.0, 3: 0.0}])
-    weights = compute_window_ema(rows)
-    assert set(weights.keys()) == {1, 2, 3}
-    for uid, w in weights.items():
-        assert w == 1.0 / 3, f"UID {uid} got {w}"
+    result = compute_window_ema(rows)
+    assert result == {}, f"All-zero composites must return empty dict for caller fallback, got {result}"
 
 
 def test_nonfinite_composite_treated_as_absent() -> None:
