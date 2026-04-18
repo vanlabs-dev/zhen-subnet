@@ -134,7 +134,7 @@ class WeightSetter:
             weights=weights_arr.tolist(),
             wait_for_inclusion=True,
             wait_for_finalization=True,
-            version_key=protocol.__spec_version__,
+            version_key=protocol.WEIGHT_VERSION_KEY,
         )
 
         # SDK v10: ExtrinsicResponse with .success attribute

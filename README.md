@@ -62,6 +62,17 @@ docker compose --profile validator up -d
 
 See [docs/MINE.md](docs/MINE.md) and [docs/VALIDATE.md](docs/VALIDATE.md) for full setup guides.
 
+## Validator weight version coordination
+
+All Zhen validators must use the same `WEIGHT_VERSION_KEY` from
+`protocol/__init__.py`. This value is NOT the subnet registration key
+and is NOT the internal spec version. It is a coordination constant
+used by Bittensor's Yuma consensus to aggregate validator weight
+vectors correctly.
+
+Current value: `1000`. If this ever changes, all validators must
+update within the same epoch to avoid weight desynchronization.
+
 ## License
 
 MIT

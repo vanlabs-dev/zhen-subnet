@@ -2,7 +2,8 @@
 
 __spec_version__: int = 3
 """Protocol spec version. Increment when scoring formula, synapse format,
-or verification logic changes in a backward-incompatible way.
+or verification logic changes in a backward-incompatible way. Internal
+versioning only, NOT the on-chain weight version.
 
 History:
     1: Initial release. Linear weight normalization.
@@ -11,4 +12,16 @@ History:
     3: Removed bestest_air from active manifest pending RC model cooling
        support (Milestone 5+). Convergence component now averages across
        2 test cases. Invalidates v2 EMA state on load.
+"""
+
+WEIGHT_VERSION_KEY: int = 1000
+"""On-chain weight version key for Bittensor Yuma aggregation.
+
+All Zhen validators must use the same value so the chain can aggregate
+their weight vectors coherently. This is orthogonal to __spec_version__:
+bump this only when the on-chain weight interpretation changes (rare),
+NOT when internal scoring logic changes.
+
+Mainnet and testnet use the same key. Coordination is out-of-band via
+docs and operator communication.
 """

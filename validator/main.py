@@ -523,35 +523,34 @@ class ZhenValidator:
             f"rounds={num_rounds}, miners={len(weights)}): {weights}"
         )
 
-        async with self._subtensor_lock:
-            if self.weight_setter is None:
-                logger.warning("No weight_setter configured; skipping commit")
-                return False
+        if self.weight_setter is None:
+            logger.warning("No weight_setter configured; skipping commit")
+            return False
 
+        self._weight_commit_started_at = time.monotonic()
+        try:
+            success = await self.weight_setter.set_weights(weights)
+        finally:
+            self._weight_commit_started_at = None
+        if success:
+            logger.info("Weights set on chain successfully")
+            self._last_gated_log_time = 0.0
+            return True
+
+        logger.warning("Weight set failed; attempting chain fallback")
+        fallback = await self.weight_setter.copy_weights_from_chain()
+        if fallback:
             self._weight_commit_started_at = time.monotonic()
             try:
-                success = await self.weight_setter.set_weights(weights)
+                fallback_success = await self.weight_setter.set_weights(fallback)
             finally:
                 self._weight_commit_started_at = None
-            if success:
-                logger.info("Weights set on chain successfully")
-                self._last_gated_log_time = 0.0
+            if fallback_success:
+                logger.info("Fallback weights committed")
                 return True
 
-            logger.warning("Weight set failed; attempting chain fallback")
-            fallback = await self.weight_setter.copy_weights_from_chain()
-            if fallback:
-                self._weight_commit_started_at = time.monotonic()
-                try:
-                    fallback_success = await self.weight_setter.set_weights(fallback)
-                finally:
-                    self._weight_commit_started_at = None
-                if fallback_success:
-                    logger.info("Fallback weights committed")
-                    return True
-
-            await self.alerter.send("weights_failed", "Failed to set weights on chain")
-            return False
+        await self.alerter.send("weights_failed", "Failed to set weights on chain")
+        return False
 
     async def _challenge_loop(self) -> None:
         """Run calibration rounds at the configured interval until shutdown."""
