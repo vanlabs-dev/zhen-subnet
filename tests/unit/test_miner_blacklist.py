@@ -22,8 +22,16 @@ def _synapse_from(hotkey: str) -> CalibrationSynapse:
     return s
 
 
-def _fake_metagraph(hotkeys: list[str], permits: list[bool], stakes: list[float]) -> MagicMock:
-    """Build a fake metagraph with just the fields blacklist_fn reads."""
+def _fake_metagraph(
+    hotkeys: list[str],
+    permits: list[bool],
+    stakes: list[float | str],
+) -> MagicMock:
+    """Build a fake metagraph with just the fields blacklist_fn reads.
+
+    ``stakes`` accepts ``str`` so tests can feed malformed entries through
+    to the blacklist's ``ValueError`` guard.
+    """
     mg = MagicMock()
     mg.hotkeys = hotkeys
     mg.validator_permit = permits
