@@ -30,8 +30,17 @@ from validator.main import (
 )
 
 
-class _ExitCalled(SystemExit):
-    """Distinct exception so tests can confirm os._exit was invoked."""
+class _ExitCalled(Exception):
+    """Distinct exception so tests can confirm os._exit was invoked.
+
+    Not a SystemExit subclass: Python 3.10's asyncio propagates
+    BaseException subclasses out of wait_for in a way that escapes
+    pytest.raises, so the sentinel stays a plain Exception.
+    """
+
+    def __init__(self, code: int) -> None:
+        super().__init__(code)
+        self.code = code
 
 
 def _make_watchdog_validator(tmp_path: Path) -> ZhenValidator:
