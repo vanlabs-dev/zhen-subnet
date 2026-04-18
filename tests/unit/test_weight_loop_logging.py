@@ -40,7 +40,7 @@ def _make_logging_validator(tmp_path: Path) -> ZhenValidator:
     v.subtensor.weights_rate_limit = MagicMock(return_value=100)
     v.weight_setter = MagicMock()
     v.weight_setter.set_weights = AsyncMock(return_value=True)
-    v.weight_setter.copy_weights_from_chain = MagicMock(return_value={})
+    v.weight_setter.copy_weights_from_chain = AsyncMock(return_value={})
     v.alerter = MagicMock()
     v.alerter.send = AsyncMock()
     return v

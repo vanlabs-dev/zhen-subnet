@@ -63,7 +63,7 @@ def test_failure_response_falls_back_to_repr_when_no_field(caplog: pytest.LogCap
     assert any("NoFieldResponse(opaque=True)" in r.message for r in errors)
 
 
-def test_copy_weights_returns_empty_on_fresh_chain(caplog: pytest.LogCaptureFixture) -> None:
+async def test_copy_weights_returns_empty_on_fresh_chain(caplog: pytest.LogCaptureFixture) -> None:
     """Empty metagraph.weights yields {} with an INFO log explaining the fresh-subnet state."""
     caplog.set_level(logging.INFO, logger="validator.weights.setter")
 
@@ -73,14 +73,14 @@ def test_copy_weights_returns_empty_on_fresh_chain(caplog: pytest.LogCaptureFixt
     metagraph.sync = MagicMock()
 
     setter = _make_setter(metagraph=metagraph)
-    result = setter.copy_weights_from_chain()
+    result = await setter.copy_weights_from_chain()
     assert result == {}
 
     infos = [r for r in caplog.records if r.levelname == "INFO"]
     assert any("no prior weights" in r.message for r in infos)
 
 
-def test_copy_weights_returns_empty_on_no_permit(caplog: pytest.LogCaptureFixture) -> None:
+async def test_copy_weights_returns_empty_on_no_permit(caplog: pytest.LogCaptureFixture) -> None:
     """All-False validator_permit yields {} with an INFO log (not an error)."""
     caplog.set_level(logging.INFO, logger="validator.weights.setter")
 
@@ -92,14 +92,14 @@ def test_copy_weights_returns_empty_on_no_permit(caplog: pytest.LogCaptureFixtur
     metagraph.sync = MagicMock()
 
     setter = _make_setter(metagraph=metagraph)
-    result = setter.copy_weights_from_chain()
+    result = await setter.copy_weights_from_chain()
     assert result == {}
 
     infos = [r for r in caplog.records if r.levelname == "INFO"]
     assert any("No validators with permit" in r.message for r in infos)
 
 
-def test_copy_weights_returns_empty_on_zero_total_stake(caplog: pytest.LogCaptureFixture) -> None:
+async def test_copy_weights_returns_empty_on_zero_total_stake(caplog: pytest.LogCaptureFixture) -> None:
     """Valid permit but zero total stake yields {} with an INFO log."""
     caplog.set_level(logging.INFO, logger="validator.weights.setter")
 
@@ -111,7 +111,7 @@ def test_copy_weights_returns_empty_on_zero_total_stake(caplog: pytest.LogCaptur
     metagraph.sync = MagicMock()
 
     setter = _make_setter(metagraph=metagraph)
-    result = setter.copy_weights_from_chain()
+    result = await setter.copy_weights_from_chain()
     assert result == {}
 
     infos = [r for r in caplog.records if r.levelname == "INFO"]

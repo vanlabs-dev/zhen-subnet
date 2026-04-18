@@ -10,10 +10,11 @@ import logging
 import os
 import signal
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from tenacity import AsyncRetrying, stop_after_attempt, wait_fixed
+from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 if importlib.util.find_spec("bittensor"):
     import bittensor as bt
@@ -43,6 +44,8 @@ DEFAULT_NETUID = int(os.environ.get("ZHEN_NETUID", "456"))
 DEFAULT_NETWORK = os.environ.get("ZHEN_NETWORK", "test")
 BLOCK_TIME_SECONDS = 12
 CHALLENGE_TIMEOUT_SECONDS = 600  # 10 minutes, sufficient for n_calls=500
+CHAIN_READ_TIMEOUT_SECONDS: float = 30.0
+METAGRAPH_SYNC_TIMEOUT_SECONDS: float = 60.0
 
 DEFAULT_CHALLENGE_INTERVAL_SECONDS = 900
 DEFAULT_WEIGHT_CHECK_INTERVAL_SECONDS = 60
@@ -57,6 +60,15 @@ class ZhenValidator:
     BOPTEST mode for production ground truth generation. Three concurrent
     asyncio loops decouple challenge cadence, weight commit cadence
     (block-gated), and DB cleanup.
+
+    Chain-call invariant: all calls to ``self.subtensor.*`` and
+    ``self.metagraph.sync()`` after ``__init__`` MUST go through
+    ``self._chain_op()``. Direct chain calls are forbidden outside
+    ``__init__`` and ``_chain_op`` itself. This invariant exists because
+    the shared substrate websocket connection raises ``ConcurrencyError``
+    when two threads call ``recv()`` concurrently; ``_chain_op``
+    serializes access via ``self._subtensor_lock``. It is also the
+    migration seam for a future ``AsyncSubtensor`` switch.
     """
 
     def __init__(
@@ -144,9 +156,17 @@ class ZhenValidator:
         self.wallet = bt.Wallet(name=wallet_name, hotkey=wallet_hotkey)
         self.subtensor = bt.Subtensor(network=self.network)
         self.dendrite = bt.Dendrite(wallet=self.wallet)
+        # Sync context during init; _chain_op unavailable until the event loop runs.
+        # This call is sequential with nothing else, so no race concern.
         self.metagraph = self.subtensor.metagraph(netuid=self.netuid)
         self.challenge_sender = ChallengeSender(self.wallet, self.dendrite)
-        self.weight_setter = WeightSetter(self.subtensor, self.wallet, self.netuid, metagraph=self.metagraph)
+        self.weight_setter = WeightSetter(
+            self.subtensor,
+            self.wallet,
+            self.netuid,
+            metagraph=self.metagraph,
+            chain_op=self._chain_op,
+        )
 
         # Find our UID in the metagraph
         my_hotkey = self.wallet.hotkey.ss58_address
@@ -275,7 +295,10 @@ class ZhenValidator:
         if self.metagraph is not None:
             logger.info("Syncing metagraph...")
             try:
-                self.metagraph.sync()
+                await self._chain_op(
+                    self.metagraph.sync,
+                    timeout=METAGRAPH_SYNC_TIMEOUT_SECONDS,
+                )
             except Exception as e:
                 logger.warning(f"Metagraph sync failed, using stale data: {e}")
             logger.info(f"Metagraph: {len(self.metagraph.neurons)} neurons")
@@ -380,27 +403,83 @@ class ZhenValidator:
         with contextlib.suppress(asyncio.TimeoutError):
             await asyncio.wait_for(self._shutdown.wait(), timeout=seconds)
 
+    async def _chain_op(
+        self,
+        op: Callable[..., Any],
+        *args: Any,
+        timeout: float = CHAIN_READ_TIMEOUT_SECONDS,
+        **kwargs: Any,
+    ) -> Any:
+        """Single entry point for every blocking chain RPC.
+
+        Serializes access to the shared substrate websocket connection
+        (required because ``websockets.sync`` raises ``ConcurrencyError``
+        if two threads call ``recv()`` on the same connection), runs the
+        blocking SDK call in a thread via :func:`asyncio.to_thread`, and
+        wraps the whole thing in :func:`asyncio.wait_for` so a wedged
+        websocket becomes a catchable :class:`asyncio.TimeoutError`
+        instead of a silent hang.
+
+        This is also the migration seam for ``AsyncSubtensor``. When we
+        eventually migrate (blocked pending Async-Substrate-Interface
+        2.0 stabilization), this method's body becomes ``return await
+        asyncio.wait_for(op(*args, **kwargs), timeout=timeout)`` and the
+        lock disappears. No call-site changes required.
+
+        Args:
+            op: Bound method on ``self.subtensor`` or ``self.metagraph``.
+                Must be synchronous.
+            *args: Positional args for the op.
+            timeout: Seconds before :class:`asyncio.TimeoutError`.
+                Default suited for light reads; pass
+                ``METAGRAPH_SYNC_TIMEOUT_SECONDS`` for
+                ``metagraph.sync()`` or weight-setting calls.
+            **kwargs: Keyword args for the op.
+
+        Returns:
+            Whatever ``op`` returns.
+
+        Raises:
+            asyncio.TimeoutError: If the op does not complete within
+                ``timeout``.
+        """
+        async with self._subtensor_lock:
+            return await asyncio.wait_for(
+                asyncio.to_thread(op, *args, **kwargs),
+                timeout=timeout,
+            )
+
     async def _blocks_until_weight_eligible(self) -> int:
         """Return number of blocks remaining until we may set weights.
 
         Zero means eligible now. Reads ``weights_rate_limit`` and
-        ``blocks_since_last_update`` directly from chain under the
-        subtensor lock, with tenacity retry for transient RPC failures.
+        ``blocks_since_last_update`` directly from chain via
+        :meth:`_chain_op`, with tenacity retry for transient RPC
+        failures. The lock is taken per call by ``_chain_op``; two
+        sequential reads from the same coroutine take-and-release the
+        lock twice. Fairness over strict transactional reads: the
+        arithmetic is still coherent because both values were fresh at
+        the moment of their own read.
         """
-        async with self._subtensor_lock:
-            async for attempt in AsyncRetrying(
-                wait=wait_fixed(10),
-                stop=stop_after_attempt(3),
-                reraise=True,
-            ):
-                with attempt:
-                    rate_limit = await asyncio.to_thread(self.subtensor.weights_rate_limit, netuid=self.netuid)
-                    blocks_since = await asyncio.to_thread(
-                        self.subtensor.blocks_since_last_update,
-                        netuid=self.netuid,
-                        uid=self.my_uid,
-                    )
-                    return max(0, int(rate_limit) - int(blocks_since))
+        async for attempt in AsyncRetrying(
+            wait=wait_fixed(10),
+            stop=stop_after_attempt(3),
+            retry=retry_if_exception_type((ConnectionError, asyncio.TimeoutError, OSError)),
+            reraise=True,
+        ):
+            with attempt:
+                rate_limit = await self._chain_op(
+                    self.subtensor.weights_rate_limit,
+                    netuid=self.netuid,
+                    timeout=CHAIN_READ_TIMEOUT_SECONDS,
+                )
+                blocks_since = await self._chain_op(
+                    self.subtensor.blocks_since_last_update,
+                    netuid=self.netuid,
+                    uid=self.my_uid,
+                    timeout=CHAIN_READ_TIMEOUT_SECONDS,
+                )
+                return max(0, int(rate_limit) - int(blocks_since))
         return 0
 
     async def _compute_and_commit_weights(self) -> bool:
@@ -438,7 +517,7 @@ class ZhenValidator:
                 return True
 
             logger.warning("Weight set failed; attempting chain fallback")
-            fallback = self.weight_setter.copy_weights_from_chain()
+            fallback = await self.weight_setter.copy_weights_from_chain()
             if fallback:
                 fallback_success = await self.weight_setter.set_weights(fallback)
                 if fallback_success:
@@ -465,8 +544,11 @@ class ZhenValidator:
 
         try:
             remaining_at_start = await self._blocks_until_weight_eligible()
-            async with self._subtensor_lock:
-                rate_limit = await asyncio.to_thread(self.subtensor.weights_rate_limit, netuid=self.netuid)
+            rate_limit = await self._chain_op(
+                self.subtensor.weights_rate_limit,
+                netuid=self.netuid,
+                timeout=CHAIN_READ_TIMEOUT_SECONDS,
+            )
             logger.info(
                 f"Weight loop gate state: rate_limit={rate_limit} blocks "
                 f"(~{int(rate_limit) * BLOCK_TIME_SECONDS}s), "

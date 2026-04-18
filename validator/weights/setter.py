@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -24,6 +25,8 @@ else:
 import protocol
 
 logger = logging.getLogger(__name__)
+
+METAGRAPH_SYNC_TIMEOUT_SECONDS: float = 60.0
 
 # Attempt to import the SDK weight processing utility
 _HAS_PROCESS_WEIGHTS = False
@@ -66,7 +69,14 @@ class WeightSetter:
 
     WEIGHT_TIMEOUT_SECONDS: int = 120
 
-    def __init__(self, subtensor: Any, wallet: Any, netuid: int, metagraph: Any = None) -> None:
+    def __init__(
+        self,
+        subtensor: Any,
+        wallet: Any,
+        netuid: int,
+        metagraph: Any = None,
+        chain_op: Callable[..., Any] | None = None,
+    ) -> None:
         """Initialize the weight setter.
 
         Args:
@@ -74,11 +84,19 @@ class WeightSetter:
             wallet: Bittensor wallet instance.
             netuid: Subnet UID to set weights on.
             metagraph: Bittensor metagraph instance for weight processing.
+            chain_op: Optional async helper that serializes access to the
+                shared substrate websocket. When provided, ``set_weights``
+                and ``copy_weights_from_chain`` route all chain calls
+                through it so they share the validator's subtensor lock.
+                Without it the setter falls back to a private executor,
+                which is race-safe only when no other code holds the
+                same subtensor.
         """
         self.subtensor = subtensor
         self.wallet = wallet
         self.netuid = netuid
         self.metagraph = metagraph
+        self._chain_op = chain_op
 
     def _set_weights_sync(self, uids_arr: npt.NDArray[np.int64], weights_arr: npt.NDArray[np.float32]) -> bool:
         """Synchronous weight-setting call (runs in thread executor).
@@ -174,20 +192,28 @@ class WeightSetter:
         uids_arr: npt.NDArray[np.int64] = np.array(uids, dtype=np.int64)
 
         try:
-            loop = asyncio.get_running_loop()
-            result = await asyncio.wait_for(
-                loop.run_in_executor(None, self._set_weights_sync, uids_arr, weights_arr),
-                timeout=float(self.WEIGHT_TIMEOUT_SECONDS),
-            )
+            if self._chain_op is not None:
+                result: bool = await self._chain_op(
+                    self._set_weights_sync,
+                    uids_arr,
+                    weights_arr,
+                    timeout=float(self.WEIGHT_TIMEOUT_SECONDS),
+                )
+            else:
+                loop = asyncio.get_running_loop()
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(None, self._set_weights_sync, uids_arr, weights_arr),
+                    timeout=float(self.WEIGHT_TIMEOUT_SECONDS),
+                )
             return result
         except asyncio.TimeoutError:
             logger.error(f"Weight setting timed out after {self.WEIGHT_TIMEOUT_SECONDS}s (chain may be congested)")
             return False
-        except Exception as e:
-            logger.error(f"Failed to set weights: {e}")
+        except Exception:
+            logger.exception("Failed to set weights")
             return False
 
-    def copy_weights_from_chain(self) -> dict[int, float]:
+    async def copy_weights_from_chain(self) -> dict[int, float]:
         """Copy existing weights from chain as a fallback.
 
         Used when scoring fails to avoid missing weight-setting windows.
@@ -195,7 +221,9 @@ class WeightSetter:
         validators with permit, weighted by stake. Empty-state conditions
         on fresh subnets (no prior weights, no validators with permit,
         zero total stake) are expected and logged at INFO; genuine errors
-        are logged with full stack traces.
+        are logged with full stack traces. The chain ``metagraph.sync`` is
+        bounded by ``METAGRAPH_SYNC_TIMEOUT_SECONDS`` so a hung websocket
+        cannot stall the fallback indefinitely.
 
         Returns:
             Mapping of miner UID to weight, or empty dict on failure or
@@ -206,7 +234,21 @@ class WeightSetter:
             return {}
 
         try:
-            self.metagraph.sync(subtensor=self.subtensor)
+            if self._chain_op is not None:
+                # lite=False is required so metagraph.weights is populated;
+                # the default lite=True leaves it empty and the stake-weighted
+                # average below would index into an empty matrix.
+                await self._chain_op(
+                    self.metagraph.sync,
+                    subtensor=self.subtensor,
+                    lite=False,
+                    timeout=METAGRAPH_SYNC_TIMEOUT_SECONDS,
+                )
+            else:
+                await asyncio.wait_for(
+                    asyncio.to_thread(self.metagraph.sync, subtensor=self.subtensor, lite=False),
+                    timeout=METAGRAPH_SYNC_TIMEOUT_SECONDS,
+                )
 
             # Shape guards before any indexing: a fresh subnet can return
             # empty weight/permit arrays that would otherwise IndexError.
