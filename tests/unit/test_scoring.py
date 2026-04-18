@@ -1,11 +1,10 @@
-"""Unit tests for the scoring engine, metrics, normalization, and EMA tracker."""
+"""Unit tests for the scoring engine, metrics, and normalization."""
 
 from __future__ import annotations
 
 import math
 
 from scoring import (
-    EMATracker,
     ScoringEngine,
     VerifiedResult,
     compute_cvrmse,
@@ -197,39 +196,4 @@ class TestScoringEngine:
 
         # Should not crash, weights should sum to 1.0
         assert math.isfinite(sum(weights.values()))
-        assert abs(sum(weights.values()) - 1.0) < 1e-10
-
-
-# ---------------------------------------------------------------------------
-# EMA tests
-# ---------------------------------------------------------------------------
-
-
-class TestEMATracker:
-    """Tests for EMATracker."""
-
-    def test_ema_first_round(self) -> None:
-        """First update should set scores directly (no blending)."""
-        ema = EMATracker(alpha=0.3)
-        ema.update({0: 0.8, 1: 0.5})
-        assert ema.scores[0] == 0.8
-        assert ema.scores[1] == 0.5
-
-    def test_ema_smoothing(self) -> None:
-        """Second update should blend with alpha=0.3.
-
-        After round 1: score = 0.8
-        After round 2 (score=0.2): ema = 0.3*0.2 + 0.7*0.8 = 0.06 + 0.56 = 0.62
-        """
-        ema = EMATracker(alpha=0.3)
-        ema.update({0: 0.8})
-        ema.update({0: 0.2})
-        expected = 0.3 * 0.2 + 0.7 * 0.8
-        assert abs(ema.scores[0] - expected) < 1e-10
-
-    def test_ema_weights_sum_to_one(self) -> None:
-        """EMA weights should sum to 1.0."""
-        ema = EMATracker(alpha=0.3)
-        ema.update({0: 0.8, 1: 0.5, 2: 0.3})
-        weights = ema.get_weights()
         assert abs(sum(weights.values()) - 1.0) < 1e-10

@@ -27,9 +27,9 @@ from validator.network.result_receiver import ResponseParser
 from validator.registry.manifest import ManifestLoader
 from validator.round import split_generator, test_case_selector
 from validator.round.orchestrator import RoundOrchestrator
-from validator.scoring.ema import EMATracker
 from validator.scoring.engine import ScoringEngine
-from validator.state import load_state, save_state
+from validator.scoring.window_ema import compute_window_ema
+from validator.scoring_db import ScoringDB
 from validator.utils.logging import setup_logging
 from validator.verification.engine import VerificationEngine
 from validator.weights.setter import WeightSetter
@@ -95,7 +95,9 @@ class ZhenValidator:
         boptest = None if local_mode else boptest_url
         self.orchestrator = RoundOrchestrator(manifest_path=manifest_path, boptest_url=boptest)
         self.scoring_engine = ScoringEngine()
-        self.ema = EMATracker(alpha=0.3)
+        self.scoring_db = ScoringDB()
+        self.ema_alpha = 0.3
+        self.scoring_window_hours = 72
         self.verification_engine = VerificationEngine()
         self.response_parser = ResponseParser()
         self.health = HealthServer(port=health_port)
@@ -262,17 +264,7 @@ class ZhenValidator:
         logger.info(f"Manifest version: {self.manifest['version']}")
         logger.info(f"Spec version: {protocol.__spec_version__}")
 
-        # Restore state from previous run
-        state = load_state()
-        if state is not None:
-            self.round_count = state["round_count"]
-            self.ema.scores = state["ema_scores"]
-            logger.info(
-                f"Resumed from {state['last_round_id']} "
-                f"(round {state['round_count']}, {len(state['ema_scores'])} miners tracked)"
-            )
-        else:
-            logger.info("No previous state found, starting fresh")
+        logger.info(f"ScoringDB ready (path={self.scoring_db.db_path}, window={self.scoring_window_hours}h)")
 
         await self.health.start()
 
@@ -318,6 +310,7 @@ class ZhenValidator:
                     break
 
         logger.info("Validator shutting down...")
+        self.scoring_db.close()
         logger.info("Shutdown complete")
 
     async def run_round(self) -> dict[str, Any]:
@@ -418,10 +411,22 @@ class ZhenValidator:
                     f"composite={scores.get(uid, 0.0):.4f}"
                 )
 
-        # 9. Update EMA
-        self.ema.update(scores)
-        weights = self.ema.get_weights()
-        logger.info(f"EMA weights: {weights}")
+        # 9. Persist per-miner scores and compute windowed EMA weights
+        await self.scoring_db.insert_round_scores(
+            round_id=round_id,
+            test_case=test_case["id"],
+            train_period=train_period,
+            test_period=test_period,
+            verified=verified,
+            composites=scores,
+        )
+
+        window_rows = await self.scoring_db.get_scores_in_window(hours=self.scoring_window_hours)
+        weights = compute_window_ema(window_rows, alpha=self.ema_alpha)
+        logger.info(
+            f"EMA weights (window={self.scoring_window_hours}h, "
+            f"rounds={len({r.round_id for r in window_rows})}): {weights}"
+        )
 
         # 10. Set weights on chain
         if self.weight_setter is not None and weights:
@@ -442,9 +447,6 @@ class ZhenValidator:
                 await self.weight_setter.set_weights(fallback)
             else:
                 await self.alerter.send("weights_failed", "Failed to set weights on chain")
-
-        # Persist state for crash recovery
-        save_state(self.round_count, self.ema.scores, round_id)
 
         logger.info(f"=== {round_id} complete ===")
         return {"round_id": round_id, "scores": scores, "weights": weights}

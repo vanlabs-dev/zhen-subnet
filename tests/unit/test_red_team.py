@@ -2,15 +2,14 @@
 
 Each test encodes a specific attack the scoring and verification pipeline
 must defeat: convergence gaming via fabricated simulations_used values,
-non-finite metric injection, exceeding the self-reported budget,
-state-file tampering, and malformed response payloads.
+non-finite metric injection, exceeding the self-reported budget, and
+malformed response payloads.
 """
 
 from __future__ import annotations
 
 import json
 import math
-import threading
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +21,6 @@ from scoring.engine import ScoringEngine, VerifiedResult
 from validator.network.result_receiver import ResponseParser
 from validator.registry.manifest import ManifestError, ManifestLoader
 from validator.round.orchestrator import validate_config_bounds
-from validator.state import load_state, save_state
 from validator.verification.engine import VerificationEngine
 
 TEST_CASE: dict[str, Any] = {
@@ -157,24 +155,6 @@ def test_convergence_gaming_bounded() -> None:
     assert liar_score - max_budget_score <= engine.WEIGHTS["convergence"] + 1e-9
     # Sanity: liar strictly beats max-budget-user by the convergence spread.
     assert math.isclose(liar_score - max_budget_score, engine.WEIGHTS["convergence"], abs_tol=1e-9)
-
-
-def test_state_rejects_inflated_ema(tmp_path: Path) -> None:
-    """Attack: tamper with state file to inflate EMA score above 1.0.
-
-    Normalized EMA scores live in [0, 1]; load_state must reject anything outside
-    that range so a poisoned file cannot pre-load a miner with overweight history.
-    """
-    state_path = tmp_path / "state.json"
-    save_state(round_count=1, ema_scores={1: 2.5}, round_id="round-0", state_path=state_path)
-    assert load_state(state_path=state_path) is None
-
-
-def test_state_rejects_negative_ema(tmp_path: Path) -> None:
-    """Negative EMA scores are also out of range and must be refused on load."""
-    state_path = tmp_path / "state.json"
-    save_state(round_count=1, ema_scores={1: -0.1}, round_id="round-0", state_path=state_path)
-    assert load_state(state_path=state_path) is None
 
 
 def test_parser_rejects_list_params() -> None:
@@ -391,39 +371,3 @@ def test_config_rejects_malformed_bounds() -> None:
         validate_config_bounds({"parameter_bounds": {"x": [1.0]}})
     with pytest.raises(ValueError, match="Invalid bounds"):
         validate_config_bounds({"parameter_bounds": {"x": "not a list"}})
-
-
-# ---------------------------------------------------------------------------
-# Concurrent state save
-# ---------------------------------------------------------------------------
-
-
-def test_concurrent_state_saves_no_corruption(tmp_path: Path) -> None:
-    """20 concurrent save_state calls must leave the file in a loadable state.
-
-    With unique tmp paths per call, os.replace is the only race window and is
-    atomic, so the loaded file is exactly one of the saved snapshots.
-    """
-    state_path = tmp_path / "state.json"
-
-    def save_one(i: int) -> None:
-        save_state(round_count=i, ema_scores={i: 0.5}, round_id=f"round-{i}", state_path=state_path)
-
-    threads = [threading.Thread(target=save_one, args=(i,)) for i in range(20)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
-
-    loaded = load_state(state_path=state_path)
-    assert loaded is not None
-    assert 0 <= loaded["round_count"] < 20
-    # Every winning save uses ema_scores={i: 0.5} for some i, so the dict has one entry.
-    assert len(loaded["ema_scores"]) == 1
-    [(uid, score)] = loaded["ema_scores"].items()
-    assert score == 0.5
-    assert uid == loaded["round_count"]
-
-    # No leftover tmp files (load_state sweeps any survivors before reading).
-    leftovers = list(tmp_path.glob("state.json.tmp.*"))
-    assert leftovers == []
