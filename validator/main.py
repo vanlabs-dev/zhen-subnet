@@ -47,6 +47,17 @@ CHALLENGE_TIMEOUT_SECONDS = 600  # 10 minutes, sufficient for n_calls=500
 CHAIN_READ_TIMEOUT_SECONDS: float = 30.0
 METAGRAPH_SYNC_TIMEOUT_SECONDS: float = 60.0
 
+WEIGHT_COMMIT_WATCHDOG_SECONDS: float = 180.0
+"""If a weight commit has been in flight longer than this, the watchdog
+concludes it has hung inside the SDK and exits the process via os._exit(1).
+Set above WEIGHT_TIMEOUT_SECONDS (120s in WeightSetter) so this is a true
+backstop, not a duplicate of the setter's own timeout."""
+
+SHUTDOWN_GRACE_SECONDS: float = 5.0
+"""Time between first Ctrl-C (graceful) and second Ctrl-C (force-exit).
+If the validator hasn't shut down naturally in this window, the next
+SIGINT bypasses asyncio entirely via os._exit(0)."""
+
 DEFAULT_CHALLENGE_INTERVAL_SECONDS = 900
 DEFAULT_WEIGHT_CHECK_INTERVAL_SECONDS = 60
 DEFAULT_CLEANUP_INTERVAL_SECONDS = 86400
@@ -136,6 +147,13 @@ class ZhenValidator:
         self._shutdown: asyncio.Event = asyncio.Event()
         self._subtensor_lock: asyncio.Lock = asyncio.Lock()
         self._last_gated_log_time: float = 0.0
+        self._weight_commit_started_at: float | None = None
+        """time.monotonic() when a weight commit entered the setter, or None
+        if no commit is currently in flight. Watched by _weight_commit_watchdog."""
+        self._first_shutdown_at: float | None = None
+        """time.monotonic() when the first SIGINT/SIGTERM arrived, or None.
+        A second signal arriving more than SHUTDOWN_GRACE_SECONDS later forces
+        os._exit(0)."""
 
         # Bittensor components
         self.wallet: Any = None
@@ -510,7 +528,11 @@ class ZhenValidator:
                 logger.warning("No weight_setter configured; skipping commit")
                 return False
 
-            success = await self.weight_setter.set_weights(weights)
+            self._weight_commit_started_at = time.monotonic()
+            try:
+                success = await self.weight_setter.set_weights(weights)
+            finally:
+                self._weight_commit_started_at = None
             if success:
                 logger.info("Weights set on chain successfully")
                 self._last_gated_log_time = 0.0
@@ -519,7 +541,11 @@ class ZhenValidator:
             logger.warning("Weight set failed; attempting chain fallback")
             fallback = await self.weight_setter.copy_weights_from_chain()
             if fallback:
-                fallback_success = await self.weight_setter.set_weights(fallback)
+                self._weight_commit_started_at = time.monotonic()
+                try:
+                    fallback_success = await self.weight_setter.set_weights(fallback)
+                finally:
+                    self._weight_commit_started_at = None
                 if fallback_success:
                     logger.info("Fallback weights committed")
                     return True
@@ -598,10 +624,80 @@ class ZhenValidator:
             await self._interruptible_sleep(self.cleanup_interval_seconds)
         logger.info("Cleanup loop exiting")
 
+    async def _weight_commit_watchdog(self) -> None:
+        """Detect hung weight commits and exit the process.
+
+        The sync Bittensor SDK's ``set_weights`` can wedge indefinitely
+        inside its ``wait_for_inclusion``/``wait_for_finalization`` loop
+        when substrate subscription threads deadlock. ``asyncio.wait_for``
+        cannot cancel the thread, so the weight loop becomes permanently
+        stuck holding the subtensor lock. This watchdog polls every 10
+        seconds; if a commit has been in flight longer than
+        ``WEIGHT_COMMIT_WATCHDOG_SECONDS``, it logs loudly and calls
+        ``os._exit(1)``.
+
+        ``os._exit`` (not ``sys.exit``) bypasses asyncio's finalization
+        which would itself hang on the stuck gather(). The process dies;
+        a supervisor (systemd, docker, tmux-with-wrapper, or a human)
+        restarts it.
+        """
+        logger.info(f"Weight-commit watchdog started (threshold={WEIGHT_COMMIT_WATCHDOG_SECONDS}s)")
+        while not self._shutdown.is_set():
+            await self._interruptible_sleep(10.0)
+            started = self._weight_commit_started_at
+            if started is None:
+                continue
+            elapsed = time.monotonic() - started
+            if elapsed > WEIGHT_COMMIT_WATCHDOG_SECONDS:
+                logger.error(
+                    f"WEIGHT COMMIT HUNG: in flight for {elapsed:.0f}s "
+                    f"(threshold {WEIGHT_COMMIT_WATCHDOG_SECONDS}s). "
+                    f"Substrate subscription thread likely deadlocked. "
+                    f"Exiting via os._exit(1) for restart. "
+                    f"If running under systemd/docker/shell-wrapper, the "
+                    f"process will auto-restart; otherwise manual restart "
+                    f"required."
+                )
+                for handler in logging.getLogger().handlers:
+                    with contextlib.suppress(Exception):
+                        handler.flush()
+                os._exit(1)
+        logger.info("Weight-commit watchdog exiting")
+
     def _handle_shutdown_signal(self, sig: signal.Signals) -> None:
-        """Signal handler: set the shutdown event so all loops wind down."""
-        logger.warning(f"Received signal {sig.name}; initiating shutdown")
-        self._shutdown.set()
+        """Signal handler: graceful shutdown on first signal, force-exit on second.
+
+        First SIGINT/SIGTERM sets ``_shutdown`` and records the timestamp.
+        Repeated signals within ``SHUTDOWN_GRACE_SECONDS`` are ignored
+        (graceful shutdown is still in progress). A signal arriving after
+        the grace window expires force-exits via ``os._exit(0)`` so
+        operators can always quit even when a chain thread is wedged.
+        """
+        now = time.monotonic()
+        if self._first_shutdown_at is None:
+            logger.warning(f"Received signal {sig.name}; initiating shutdown")
+            self._first_shutdown_at = now
+            self._shutdown.set()
+            return
+
+        elapsed = now - self._first_shutdown_at
+        if elapsed < SHUTDOWN_GRACE_SECONDS:
+            logger.warning(
+                f"Received {sig.name} again ({elapsed:.1f}s into shutdown); "
+                f"still trying to exit gracefully. Send again after "
+                f"{SHUTDOWN_GRACE_SECONDS}s to force."
+            )
+            return
+
+        logger.error(
+            f"Received {sig.name} {elapsed:.1f}s after first signal. "
+            f"Graceful shutdown is stuck (likely a wedged chain thread). "
+            f"Force-exiting via os._exit(0)."
+        )
+        for handler in logging.getLogger().handlers:
+            with contextlib.suppress(Exception):
+                handler.flush()
+        os._exit(0)
 
     async def start(self) -> None:
         """One-time startup: warmup, health server, alerter ping.
@@ -652,6 +748,7 @@ class ZhenValidator:
             asyncio.create_task(self._challenge_loop(), name="challenge_loop"),
             asyncio.create_task(self._weight_loop(), name="weight_loop"),
             asyncio.create_task(self._cleanup_loop(), name="cleanup_loop"),
+            asyncio.create_task(self._weight_commit_watchdog(), name="weight_commit_watchdog"),
         ]
 
         try:

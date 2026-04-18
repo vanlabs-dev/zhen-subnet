@@ -30,6 +30,8 @@ def _make_loop_validator(tmp_path: Path) -> ZhenValidator:
     v = ZhenValidator.__new__(ZhenValidator)
     v._shutdown = asyncio.Event()
     v._subtensor_lock = asyncio.Lock()
+    v._first_shutdown_at = None
+    v._weight_commit_started_at = None
     v.challenge_interval_seconds = DEFAULT_CHALLENGE_INTERVAL_SECONDS
     v.weight_check_interval_seconds = DEFAULT_WEIGHT_CHECK_INTERVAL_SECONDS
     v.cleanup_interval_seconds = DEFAULT_CLEANUP_INTERVAL_SECONDS
