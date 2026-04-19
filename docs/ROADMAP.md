@@ -2,7 +2,7 @@
 
 <!-- FORMATTING RULE: This document must NEVER contain em dashes or en dashes. Use commas, periods, colons, or parentheses instead. -->
 
-**Status:** Milestone 3 complete, testnet hardening complete, bestest_air pulled pending RC model cooling support (Phase 1 technical work)
+**Status:** Phase 1 complete. Differentiated weights confirmed in live testnet round 0 post-Phase-1. bestest_air active with year-round cooling. Phase 2 planning underway.
 **Updated:** 2026-04-19
 
 This document tracks two parallel tracks: the proving milestones from testnet validation through mainnet launch and revenue, and the technical capability phases that expand what the subnet can physically calibrate. Both tracks share the same codebase and the same incentive mechanism. Neither is skippable, and they must advance together: a proving milestone that requires multi-zone buildings is gated on the technical phase that adds multi-zone support.
@@ -27,20 +27,20 @@ Zhen is built primarily for two customer segments. Technical scope, test case se
 
 Phases expand what the simplified model can physically represent. Each phase gates specific proving milestones and specific markets. A phase is not declared complete until the active manifest reflects its scope and miner scores stabilize there.
 
-### Phase 1: Single-zone year-round cooling (next work)
+### Phase 1: Single-zone year-round cooling [COMPLETE, 2026-04-19]
 
-**Goal:** Resolve the live-run finding that ~90% of rounds produce uniform 0.5/0.5 weights because the heating-only RC model cannot fit summer periods of a heating-only building. Add cooling support and a test case that exercises it.
+**Goal:** Resolve the live-run finding that ~90% of rounds produce uniform 0.5/0.5 weights because the heating-only RC model cannot fit summer periods. Add cooling support and a test case that exercises it.
 
-**Scope:**
-- Extend `simulation/rc_network.py` with separate heating and cooling modes, each with its own parameter set. Reject a single symmetric coefficient; heating and cooling coefficients are not physically equivalent.
-- Re-activate `bestest_air` in the manifest. The building has a four-pipe fan coil unit and exercises cooling year-round.
-- Drop `bestest_hydronic` from the active manifest (heating-only, year-round cooling uncovered). Archive its DB rows under the v4 to v5 spec bump, same pattern as v2 to v3.
-- Keep `bestest_hydronic_heat_pump` (it has a heat pump that reverses for cooling, compatible with the cooling-capable RC model).
-- End state: active manifest = `{bestest_hydronic_heat_pump, bestest_air}`, both exercising year-round operation.
+**Scope delivered:**
+- Extended `simulation/rc_network.py` with separate heating and cooling modes, each with its own parameter set. Dual-mode thermostat with `has_cooling` gate.
+- Re-activated `bestest_air` (manifest v2.0.0, spec v5). The building has a four-pipe fan coil unit; Denver TMY weather extracted directly from BOPTEST FMU via `/forecast`. 7 calibratable parameters (added `hvac_cop_cooling`). 3 scoring outputs: zone_air_temperature_C, total_heating_thermal_kWh, total_cooling_energy_kWh.
+- Introduced rank-based CVRMSE scoring (spec v6): top-K=5, base=0.5 exponential decay, ceiling CVRMSE=10.0. Constants live in `scoring/engine.py`.
+- Dropped `bestest_hydronic` and `bestest_hydronic_heat_pump` from active manifest. Directories retained on disk for integration test fixtures.
 
-**Calibration algorithm decision:** Retain Bayesian optimization via scikit-optimize. If the parameter space expands meaningfully with separate heating and cooling parameter sets, bump `n_calls` accordingly. Revisit the algorithm choice in Phase 2 planning; do not preemptively migrate.
-
-**Exits:** uniform-weight round rate on mainnet/testnet drops well below 50%. `bestest_air` scores compete with `bestest_hydronic_heat_pump` across multiple seasons. Open finding 2.1 (CVRMSE dead zone) reframes from "mechanism bug" to "Phase 1 boundary resolved."
+**Exits confirmed:**
+- Uniform-weight round rate on testnet drops well below 50% (live round 0 post-Phase-1: 0.731 / 0.269 split).
+- Both miners pass ceiling gate (CVRMSE 0.51 and 0.70); scores differentiate via rank-based component.
+- Open finding 2.1 (CVRMSE dead zone) resolved: rank-based scoring with a year-round test case eliminates the floor-tie equilibrium.
 
 ### Phase 2: Two-zone commercial (Market 1 and 3 minimum viable scope)
 
@@ -161,7 +161,7 @@ Phases expand what the simplified model can physically represent. Each phase gat
 
 - Structured logging with daily file rotation
 - Graceful shutdown with signal handling (SIGTERM/SIGINT)
-- Validator state persistence (crash recovery via ~/.zhen/validator_state.json)
+- Validator state persistence for crash recovery (originally ~/.zhen/validator_state.json; later superseded by the SQLite ~/.zhen/scoring.db path, with legacy JSON state archived automatically on first open)
 - Webhook alerting for round failures
 - Weight-setting timeout (120s, prevents chain hang blocking)
 - Anti-default-parameter detection in verification engine
@@ -202,17 +202,6 @@ Deep red-team audit and subsequent fixes addressing correctness, safety, and ope
 - At least one miner running without direct support from the team
 
 ---
-
-## Test case expansion: FCU buildings
-
-The `bestest_air` test case (BESTEST building with four-pipe fan coil unit) is present in `registry/test_cases/` but excluded from the active manifest rotation. The current RC network thermal model does not support:
-
-- Cooling operation (the thermostat only fires when zone temperature is below the heating setpoint)
-- Fan power modeling
-- Supply air tempering dynamics
-- Bi-directional HVAC with separate heating and cooling capacities
-
-Re-adding `bestest_air` is the work of **Phase 1** above. Separate heating and cooling parameter sets are required; a single symmetric coefficient is rejected. Once Phase 1 ships, `bestest_air` returns to the active manifest and `bestest_hydronic` rotates out.
 
 ---
 
@@ -276,16 +265,34 @@ The public dashboard is deferred to post-mainnet (see IMPLEMENTATION.md Phase 6 
 
 Items surfaced by the AUDIT.md pass and not yet resolved. Severity and phase where resolution is expected. Documented here so the subnet does not claim a clean bill of health while items are open.
 
-| # | Finding | Severity | Planned Resolution |
-|---|---------|----------|--------------------|
-| 2.1 | CVRMSE dead zone when no miner clears the 0.30 threshold. Reframed: the issue is period selection and model capability, not the threshold. | High | Phase 1 resolves for bestest_air; full resolution tracks with Phase 2/3 as test cases diversify. |
-| 2.2 | Self-reported `simulations_used` is Nash-gameable; every rational miner reports 0 for the 10% convergence component. | High | Tier-2 hardening. Candidate fix: replace with validator-verifiable wall-clock submission time, or remove component. Testnet data decides. |
-| 2.3 | Near-default parameter tolerance 0.1% is bypassable by a 0.2% perturbation; on local mode defaults are ground truth. | High | Tolerance scales with parameter span rather than raw percentage. Open. |
-| 2.4 | Missing-parameter fallback: RC model fills omitted params with config defaults, so a one-dimensional attacker bypasses the all-defaults check. | High | Require full parameter set in verification; reject partial submissions. Open. |
-| 2.13 | Miner and validator disagree on zero-mean CVRMSE handling; validator skips, miner does not. | Medium | Unify handling in shared scoring module. Open. |
-| 2.14, 2.15 | Spec version not carried on the wire; miner logs a warning and continues on manifest mismatch rather than failing closed. | Medium | Add `spec_version` and enforce manifest equality on the miner side. Open. |
-| Live-run | Miners produce byte-identical CVRMSE on hard rounds, likely parameter-bounds corner convergence when signal is low. | Medium | Instrument before diagnosing. Do not patch blindly. |
-| Tier-3 | Extrinsic error parsing, websocket keepalive, BOPTEST advance timeout, health endpoint completeness, and related operational items. | Low to Medium | Tracked in AUDIT.md; addressed opportunistically during validator work. |
+| # | Finding | Severity | Status |
+|---|---------|----------|--------|
+| 2.1 | CVRMSE dead zone when no miner clears the threshold. | High | **Resolved in Phase 1.** Rank-based scoring plus year-round bestest_air eliminates the floor-tie equilibrium. |
+| 2.2 | Self-reported `simulations_used` is Nash-gameable; every rational miner reports 0 for the 10% convergence component. | High | Open. Lower priority now that rank-based CVRMSE dominates. Candidate fix: validator-verifiable wall-clock time, or remove component. Testnet data decides. |
+| 2.3 | Near-default parameter tolerance 0.1% is bypassable by a 0.2% perturbation. | High | Open. Tolerance should scale with parameter span rather than raw percentage. |
+| 2.4 | Missing-parameter fallback: RC model fills omitted params with config defaults, bypassing the all-defaults check. | High | Open. Require full parameter set in verification; reject partial submissions. |
+| 2.5 | Tenacity `wait_fixed` should be `wait_exponential` for resilient retry behavior. | Medium | Open. |
+| 2.12 | BOPTEST advance loop outer timeout not set. | Medium | Open. |
+| 2.13 | Miner and validator disagree on zero-mean CVRMSE handling; validator skips, miner does not. | Medium | Open. |
+| 2.14, 2.15 | Spec version not carried on the wire; miner logs a warning and continues on manifest mismatch rather than failing closed. | Medium | Open. |
+| 2.16 | `asyncio.Lock` architectural debt in weight setter. | Medium | Open. |
+| New | `validator/scoring/breakdown.py` still references `CVRMSE_THRESHOLD=0.30` for diagnostic display only. No impact on actual scoring; breakdown output may show misleading normalized values. | Low | Open. Fix when breakdown consumer is next updated. Code change required; out of scope for this docs pass. |
+| New | R-squared component produces huge negative values on low-variance outputs (cooling near-zero in winter; heating near-zero in summer). Values are clipped to 0 by `max(0, R^2)`. Not blocking; consider restricting R^2 to zone_temperature output or dropping the component. | Low | Open. |
+| New | Registry-to-runtime sync is manual: operators must run `cp registry/test_cases/$tc/*.json ~/.zhen/test_cases/$tc/` after any config change. Automation is on the Phase 2 backlog. | Low | Open. Documented in MINE.md and VALIDATE.md. |
+| Tier-3 | Extrinsic error parsing, websocket keepalive, BOPTEST advance timeout, health endpoint completeness, and related operational items. | Low to Medium | Tracked in AUDIT.md; addressed opportunistically. |
+
+---
+
+## Phase 1 Retrospective
+
+Key learnings confirmed by implementation and live-run data.
+
+- Weather data alignment is not optional. The Brussels-derived weather.json paired with bestest_air's Denver FCU guaranteed catastrophic CVRMSE regardless of optimization quality. Extracting Denver TMY directly from the BOPTEST FMU via `/forecast` was the correct fix; no manual weather file construction.
+- Thermal vs electrical output distinction matters for FCU test cases. bestest_air heating output is thermal power; cooling output is electrical power. Scoring must use the physically correct output type per variable; using either interchangeably produces misleading CVRMSE.
+- Parameter-bounds-corner convergence on zero-signal training periods (pre-Phase-1 round 24) was a symptom of test case limitations, not a scoring bug. A year-round capable test case with a non-trivial physics floor resolves it.
+- Rank-based scoring with a top-K cap is the correct composite design for a subnet with a non-trivial physics floor. Absolute-magnitude CVRMSE normalization requires re-tuning as the RC model tier advances; rank-based scoring is tier-agnostic by construction.
+- Registry-to-runtime sync (registry/ to ~/.zhen/) is manual and fragile. Operators may forget to re-sync after config changes, causing stale runtime state with no obvious error. This is the most likely source of silent misconfiguration in production deployments.
+- Live validation on testnet 456: Confirmed across 5 rounds over a 2+ hour observation window. Miners consistently diverge on calibrated parameters (no byte-identical convergence as observed pre-Phase-1). Training CVRMSE stays well under the 10.0 ceiling across varied period difficulty. Round-to-round winner alternates between UIDs (neither miner has structural advantage), and 5-round EMA settles near 0.54/0.46 — healthy differentiation. Two transient weight-commit errors (ExtrinsicResponse: (False, None)) both recovered on the next 60-second retry cycle without operator intervention.
 
 ---
 

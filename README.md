@@ -21,15 +21,18 @@ Testnet live on Bittensor subnet 456. Comprehensive unit + integration test suit
 **Milestones proven:**
 - Two-model architecture (Milestone 1, 2026-04-14)
 - Competitive differentiation with 4 miners (Milestone 2, 2026-04-14)
-- Test case rotation across BOPTEST cases (Milestone 3, 2026-04-15; active rotation trimmed to 2 cases pending RC model cooling support, see [docs/ROADMAP.md](docs/ROADMAP.md))
+- Test case rotation across BOPTEST cases (Milestone 3, 2026-04-15)
+- Phase 1 complete: year-round single-zone cooling, rank-based scoring, testnet validated (2026-04-19)
 
-**Infrastructure hardened:** weight processing, health endpoint, SQLite-backed score persistence, graceful shutdown, webhook alerting, anti-gaming verification. Mechanism hardening is still in progress; see the [Roadmap](docs/ROADMAP.md) for open audit findings.
+**Infrastructure hardened:** weight processing, health endpoint, SQLite-backed score persistence, graceful shutdown, webhook alerting, anti-gaming verification. See the [Roadmap](docs/ROADMAP.md) for Phase 2 plans and open audit findings.
 
 ## How It Works
 
 Zhen uses a two-model architecture. Validators run a complex emulator (BOPTEST/EnergyPlus) to generate ground truth data, then challenge miners to calibrate a simplified RC network model against that data. Miners use Bayesian optimization to find parameters that minimize the gap between the simplified model and reality. Validators score submissions on held-out test data using ASHRAE metrics (CVRMSE, NMBE, R-squared) and set weights on-chain via Yuma Consensus.
 
-The platform is domain-agnostic. The first vertical is building energy simulation. The active manifest rotates between two BOPTEST cases (bestest_hydronic_heat_pump, bestest_hydronic) selected deterministically per round via SHA-256 hashing. A third case (bestest_air) is staged in the registry and returns when the RC model gains cooling support (see [docs/ROADMAP.md](docs/ROADMAP.md)).
+The platform is domain-agnostic. The first vertical is building energy simulation. The active test case is bestest_air (Denver, CO, USA climate; four-pipe fan coil unit; 7 calibratable parameters; 3 scoring outputs). Phase 2 plans multi-zone commercial buildings.
+
+BOPTEST test cases are benchmark fixtures, not deployment constraints. Zhen calibrates building simulation models globally. The test case locations (Denver, Brussels, Chicago) are the simulator locations, not where Zhen can deploy. Clients anywhere can use Zhen by providing their own weather data, building description, and measured operational data.
 
 ## Quick Links
 

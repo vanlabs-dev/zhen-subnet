@@ -222,12 +222,14 @@ The `MAX_PARALLEL = 8` semaphore is present but RC network simulations are synch
 
 ### 2.5 Scoring Engine
 
-Implements the composite formula from the Mechanism Design Document (Section 4).
+Implements the composite formula from the Mechanism Design Document (Section 4). CVRMSE is now rank-based (spec v6); the old linear threshold is no longer used for CVRMSE normalization.
 
 ```python
 class ScoringEngine:
     WEIGHTS = {"cvrmse": 0.50, "nmbe": 0.25, "r_squared": 0.15, "convergence": 0.10}
-    CVRMSE_THRESHOLD = 0.30
+    CVRMSE_CEILING: float = 10.0   # Submissions above this receive cvrmse_norm = 0.0
+    CVRMSE_TOP_K: int = 5          # Only top-K miners receive non-zero rank-based CVRMSE score
+    CVRMSE_DECAY_BASE: float = 0.5 # Exponential decay factor per rank
     NMBE_THRESHOLD = 0.10
     POWER_EXPONENT: float = 2.0
     SCORE_FLOOR_RATIO: float = 0.05
@@ -493,12 +495,12 @@ The grey-box thermal model used for Phase 1 test cases (`simulation/rc_network.p
 Key physics:
 - Wall and roof thermal resistances are treated as **parallel** conductances: `Q_envelope = (T_out - T_zone) * (1/R_wall + 1/R_roof)`.
 - `self.ach` is an **effective W/K coefficient**, not true ACH. It absorbs building volume into the calibratable parameter. The physical interpretation of "infiltration_ach" in config.json is an effective lumped conductance that the optimizer finds during calibration.
-- Thermostat is **heating-only** (Phase 1). Cooling logic is deferred to Phase 2 warm-climate test cases.
+- Thermostat is **dual-mode** (heating and cooling) gated by a `has_cooling` flag per test case. Separate heating and cooling coefficients; they are not physically equivalent.
 
 Parameters read from `config.json` defaults if not supplied:
-- `wall_r_value`, `roof_r_value`, `zone_capacitance`, `infiltration_ach`, `hvac_cop`, `solar_gain_factor`
+- `wall_r_value`, `roof_r_value`, `zone_capacitance`, `infiltration_ach`, `hvac_cop`, `solar_gain_factor`, `hvac_cop_cooling` (bestest_air only)
 
-Outputs: `zone_air_temperature_C` (list of floats), `total_heating_energy_kWh` (list of floats).
+Outputs (5 available, per-test-case subset used for scoring): `zone_air_temperature_C`, `total_heating_energy_kWh`, `total_heating_thermal_kWh`, `total_cooling_energy_kWh`, `total_cooling_thermal_kWh`.
 
 ### 4.3 BOPTEST Client
 
@@ -562,27 +564,19 @@ zhen-registry/
 
 ### 5.2 manifest.json
 
-Current manifest version: **v1.2.0** (paired with `protocol.__spec_version__ = 4`). Two test cases are active. Both use `rc_network`, Brussels climate, 6 parameters, difficulty easy. `bestest_air` was in the earlier v1.1.0 rotation but was pulled in v3 (spec bump) because the heating-only RC model produced catastrophic CVRMSE on its FCU cooling behavior. It returns as part of the Phase 1 roadmap work (see ROADMAP.md).
+Current manifest version: **v2.0.0** (paired with `protocol.__spec_version__ = 6`). One test case is active. `bestest_air` uses `rc_network` with dual heating/cooling mode, Denver climate, 7 parameters, difficulty easy. `bestest_hydronic_heat_pump` and `bestest_hydronic` were removed from the active rotation in Phase 1 (spec v5); directories retained on disk for integration test fixtures.
 
 ```json
 {
-  "version": "v1.2.0",
+  "version": "v2.0.0",
   "test_cases": [
     {
-      "id": "bestest_hydronic_heat_pump",
+      "id": "bestest_air",
       "simplified_model_type": "rc_network",
-      "parameter_count": 6,
+      "parameter_count": 7,
       "difficulty": "easy",
-      "climate": "Brussels, Belgium",
-      "scoring_outputs": ["zone_air_temperature_C", "total_heating_energy_kWh"]
-    },
-    {
-      "id": "bestest_hydronic",
-      "simplified_model_type": "rc_network",
-      "parameter_count": 6,
-      "difficulty": "easy",
-      "climate": "Brussels, Belgium",
-      "scoring_outputs": ["zone_air_temperature_C", "total_heating_energy_kWh"]
+      "climate": "Denver, CO, USA",
+      "scoring_outputs": ["zone_air_temperature_C", "total_heating_thermal_kWh", "total_cooling_energy_kWh"]
     }
   ]
 }
@@ -627,7 +621,7 @@ btcli subnet start --netuid {NETUID} --network test
 
 ### 6.2 Synapse Protocol Definition
 
-Current `protocol.__spec_version__ = 4`. Version history is in `protocol/__init__.py`: v1 linear normalization; v2 power-law (p=2) + 5% score floor; v3 removed bestest_air pending cooling support; v4 expanded `required_hash_fields` to cover training_data, parameter_bounds, simulation_budget, and manifest_version (closes the MITM tamper surface from AUDIT finding 1.6). Each bump invalidates prior EMA state on load.
+Current `protocol.__spec_version__ = 6`. Version history is in `protocol/__init__.py`: v1 linear normalization; v2 power-law (p=2) + 5% score floor; v3 removed bestest_air pending cooling support; v4 expanded `required_hash_fields` to cover training_data, parameter_bounds, simulation_budget, and manifest_version; v5 re-activated bestest_air with RC model cooling support (manifest v2.0.0, Denver climate, 7 params, 3 scoring outputs); v6 introduced rank-based CVRMSE scoring (top-K=5, base=0.5 decay, ceiling=10.0). Each bump invalidates prior EMA state on load.
 
 The on-chain weight version passed to `set_weights` as `version_key` is `protocol.WEIGHT_VERSION_KEY = 1000`, which is orthogonal to `__spec_version__` and must match across all Zhen validators so Yuma aggregation remains coherent.
 

@@ -61,13 +61,15 @@ btcli subnet register --netuid 456 --network test --wallet-name zhen-miner --wal
 Miners need local copies of test case data files for the RC network simulation:
 
 ```bash
-for tc in bestest_hydronic_heat_pump bestest_hydronic; do
+for tc in bestest_air; do
   mkdir -p ~/.zhen/test_cases/$tc
   cp registry/test_cases/$tc/*.json ~/.zhen/test_cases/$tc/
 done
 ```
 
 Each test case directory contains three files: `config.json`, `schedules.json`, and `weather.json`.
+
+**Important:** `registry/test_cases/<id>/` is the source of truth in the repo. `~/.zhen/test_cases/<id>/` is where the miner reads at runtime. Re-run this copy step after any config change or repo update. Forgetting to re-sync is a common footgun; the miner will run silently against stale config with no obvious error. Automated sync is on the Phase 2 backlog.
 
 ### 6. Start mining
 
@@ -111,7 +113,7 @@ Override defaults with CLI args in docker-compose.yml or pass environment variab
 3. Your miner validates the requesting hotkey is a registered validator (blacklist check), then runs Bayesian optimization (scikit-optimize) to find RC network parameters that minimize CVRMSE on the training data.
 4. Miner returns calibrated parameters, simulation count, and training CVRMSE to the validator.
 5. Validator re-runs the RC model with your parameters on held-out test data.
-6. Validator scores using ASHRAE metrics: CVRMSE (50%), NMBE (25%), R-squared (15%), convergence efficiency (10%).
+6. Validator scores using ASHRAE metrics: CVRMSE (50%, rank-based with top-K=5 and ceiling CVRMSE=10.0), NMBE (25%), R-squared (15%), convergence efficiency (10%).
 7. Scores are normalized across all miners using power-law weighting and set as weights on-chain.
 
 ## Scoring
@@ -120,8 +122,8 @@ Scores are computed from four weighted metrics:
 
 | Metric | Weight | Target |
 |---|---|---|
-| CVRMSE | 50% | Under 30% for ASHRAE compliance |
-| NMBE | 25% | Near zero |
+| CVRMSE | 50% | Rank-based: beat other miners. Ceiling gate at CVRMSE=10.0. |
+| NMBE | 25% | Near zero (ASHRAE threshold 0.10) |
 | R-squared | 15% | Close to 1.0 |
 | Convergence | 10% | Fewer simulation calls is better |
 

@@ -77,12 +77,11 @@ Each miner registration requires burning TAO. Combined with power-law normalizat
 
 ## Supported Test Cases
 
-The active manifest rotation contains:
+The active manifest (v2.0.0) contains one test case:
 
-- `bestest_hydronic_heat_pump`: Residential hydronic heating with heat pump (Brussels climate)
-- `bestest_hydronic`: Residential hydronic heating with boiler (Brussels climate)
+- `bestest_air`: Residential single-zone building with four-pipe fan coil unit (Denver, CO, USA climate). 7 calibratable parameters. 3 scoring outputs: zone temperature, heating thermal power, cooling electrical power.
 
-Additional BOPTEST test cases exist in `registry/test_cases/` but are not part of the active rotation. `bestest_air` is held out pending RC model cooling support; it will be re-added in a future release. See ROADMAP.md for the deferral rationale.
+Additional BOPTEST test cases (`bestest_hydronic_heat_pump`, `bestest_hydronic`) exist in `registry/test_cases/` and are retained for integration test fixtures. They are not part of the active rotation. Phase 2 plans multi-zone commercial test cases. See ROADMAP.md.
 
 ## Immunity Period
 

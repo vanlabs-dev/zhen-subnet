@@ -249,11 +249,15 @@ Rewards miners who find good calibrations with fewer expensive simulation evalua
 
 Each component is normalized to [0, 1] before weighting:
 
-**CVRMSE normalization:**
+**CVRMSE normalization (rank-based, spec v6):**
+
+CVRMSE is scored by rank among all submitters in the round, not against a fixed threshold. Miners above the ceiling gate (CVRMSE=10.0) receive 0.0. The top-ranked miner scores 1.0; each subsequent rank is multiplied by CVRMSE_DECAY_BASE=0.5. Only the top CVRMSE_TOP_K=5 miners receive non-zero CVRMSE scores; deeper ranks score 0.0.
+
+Prior to spec v6, the linear formula was:
 ```
-cvrmse_norm = max(0, 1 - (cvrmse / cvrmse_threshold))
+cvrmse_norm = max(0, 1 - (cvrmse / 0.30))
 ```
-Where cvrmse_threshold = 0.30 (hourly). A CVRMSE of 0.0 scores 1.0. A CVRMSE at or above threshold scores 0.0.
+This formula is no longer used. It is retained here for historical reference only.
 
 **NMBE normalization:**
 ```
@@ -616,7 +620,7 @@ Sourced from BOPTEST and Energym:
 | Test Case | Building Type | HVAC System | Climate | Source |
 |-----------|--------------|-------------|---------|--------|
 | bestest_hydronic_heat_pump | Residential single-zone | Hydronic heat pump | Brussels, Belgium | BOPTEST |
-| bestest_air | Residential single-zone | Air-based heating/cooling | Brussels, Belgium | BOPTEST |
+| bestest_air | Residential single-zone | Four-pipe fan coil unit (heating + cooling) | Denver, CO, USA | BOPTEST |
 | multizone_office_simple | Commercial 5-zone office | VAV with reheat | Chicago, USA | BOPTEST |
 | singlezone_commercial | Commercial single-zone | RTU | Multiple | BOPTEST |
 | apartments_thermal | Multi-unit residential | Radiator heating | Northern Europe | Energym |

@@ -14,13 +14,12 @@ The architecture is domain-agnostic. Any domain with a complex simulation and a 
 - Pluggable test case registry: new domains = new emulator + simplified model
 
 ## Current vertical: building energy
-- Scoring: CVRMSE 50%, NMBE 25%, R-squared 15%, convergence efficiency 10%
+- Scoring: CVRMSE 50% (rank-based, top-K=5 with base=0.5 exponential decay, ceiling CVRMSE=10.0), NMBE 25%, R-squared 15%, convergence efficiency 10%
 - Score pipeline: raw composites -> 5% relative floor vs max -> power-law (exponent 2) -> normalize sum=1
 - Ground truth: BOPTEST containerized building emulators
-- Simplified models: RC network thermal models (heating-only in current release)
-- Climate: Brussels, Belgium (BESTEST reference buildings)
-- Active manifest (v1.2.0): bestest_hydronic_heat_pump, bestest_hydronic. bestest_air is staged in the registry and returns when the RC model gains cooling support (Phase 1 in docs/ROADMAP.md).
-- Spec version: 4 (internal protocol/scoring version, orthogonal to WEIGHT_VERSION_KEY=1000 used for Yuma aggregation)
+- Simplified models: RC network thermal models with dual heating and cooling modes
+- Active manifest (v2.0.0): bestest_air (Denver, CO, USA climate). bestest_hydronic_heat_pump and bestest_hydronic are retained on disk for integration test fixtures but not in the active rotation.
+- Spec version: 6 (internal protocol/scoring version, orthogonal to WEIGHT_VERSION_KEY=1000 used for Yuma aggregation)
 
 ## Deployment
 - Docker: Dockerfile.miner, Dockerfile.validator, docker-compose.yml with profiles

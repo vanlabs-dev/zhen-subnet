@@ -42,7 +42,7 @@ Bittensor subnet for decentralized digital twin calibration. Domain-agnostic pla
 Two-model design:
 - Complex emulator (BOPTEST): validators only, generates ground truth
 - Simplified model (RC network): miners calibrate, validators verify
-- Scoring: CVRMSE 50%, NMBE 25%, R-squared 15%, convergence 10%
+- Scoring: CVRMSE 50% (rank-based, top-K=5, base=0.5 exponential decay, ceiling CVRMSE=10.0), NMBE 25%, R-squared 15%, convergence 10%
 - Score pipeline: raw composites -> 5% relative floor vs max -> power-law (exponent 2) -> normalize to sum=1; empty dict returned on all-zero (caller copies chain weights)
 - Single synapse: CalibrationSynapse (challenge fields + optional result fields)
-- Spec version: 4 (v1 was linear normalization; v2 added power-law + floor; v3 dropped bestest_air pending cooling support; v4 expanded required_hash_fields to cover training_data, parameter_bounds, simulation_budget, manifest_version). Tracked in protocol/__init__.py. Each bump invalidates prior EMA state on load.
+- Spec version: 6 (v1 was linear normalization; v2 added power-law + floor; v3 dropped bestest_air pending cooling support; v4 expanded required_hash_fields; v5 re-activated bestest_air with cooling support, manifest v2.0.0; v6 introduced rank-based CVRMSE scoring). Tracked in protocol/__init__.py. Each bump invalidates prior EMA state on load.

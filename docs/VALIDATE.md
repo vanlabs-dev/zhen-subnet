@@ -82,13 +82,15 @@ btcli subnet register --netuid 456 --network test --wallet-name zhen-validator -
 Validators need local copies of test case data:
 
 ```bash
-for tc in bestest_hydronic_heat_pump bestest_hydronic; do
+for tc in bestest_air; do
   mkdir -p ~/.zhen/test_cases/$tc
   cp registry/test_cases/$tc/*.json ~/.zhen/test_cases/$tc/
 done
 ```
 
 The test case directory contains three files: `config.json`, `schedules.json`, and `weather.json`.
+
+**Important:** `registry/test_cases/<id>/` is the source of truth in the repo. `~/.zhen/test_cases/<id>/` is where the validator reads at runtime. Re-run this copy step after any config change or repo update. Forgetting to re-sync is a common footgun; the validator will run silently against stale config with no obvious error. Automated sync is on the Phase 2 backlog.
 
 ### 7. Start validating
 
@@ -173,12 +175,11 @@ BOPTEST runs as a Docker service on port 8000 (default). For detailed setup inst
 
 ### Supported test cases
 
-Currently active (2 test cases, deterministic rotation per round):
+Currently active (manifest v2.0.0, 1 test case):
 
-- `bestest_hydronic_heat_pump`: BESTEST reference building with hydronic heat pump (Brussels climate)
-- `bestest_hydronic`: BESTEST reference building with hydronic heating (Brussels climate)
+- `bestest_air`: BESTEST building with four-pipe fan coil unit (Denver, CO, USA climate). 7 calibratable parameters. 3 scoring outputs: zone_air_temperature_C, total_heating_thermal_kWh, total_cooling_energy_kWh.
 
-Held out of rotation: `bestest_air` (BESTEST building with four-pipe fan coil unit). The current RC model is heating-only and cannot represent FCU cooling, so this case is kept in the registry but excluded from the manifest until RC model cooling support lands.
+Retained on disk but not in the active manifest: `bestest_hydronic_heat_pump`, `bestest_hydronic`. These directories are kept for integration test fixtures only. Phase 2 will add multi-zone commercial test cases.
 
 ## Scoring Reference
 

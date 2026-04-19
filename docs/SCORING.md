@@ -15,10 +15,24 @@ CVRMSE = sqrt(mean((predicted - measured)^2)) / mean(measured)
 - Measures prediction accuracy
 - Lower is better
 - Averaged across all scoring outputs (e.g., zone temperature, heating power)
-- ASHRAE Guideline 14 compliance threshold: 30% (0.30)
 - Returns 1.0 (worst) if no valid outputs
 - Outputs where `abs(mean(measured)) < 1e-6` (near-zero mean) are skipped to avoid division instability
 - Outputs with non-finite values are skipped
+
+**CVRMSE is scored using a rank-based mechanism, not a linear normalization against a fixed threshold.** The raw CVRMSE value determines a miner's rank among all submitters in the round. The rank-based component score is computed as follows:
+
+1. Sort all miners by CVRMSE ascending (lower is better).
+2. Apply a ceiling gate: any miner with CVRMSE above `CVRMSE_CEILING = 10.0` receives a CVRMSE component score of 0.0.
+3. Assign rank-based scores to miners that pass the ceiling gate. The top-ranked miner scores 1.0. Each subsequent rank scores the previous rank multiplied by `CVRMSE_DECAY_BASE = 0.5` (exponential decay). Ranks beyond `CVRMSE_TOP_K = 5` score 0.0.
+
+Example with 4 miners sorted by CVRMSE: rank 1 scores 1.0, rank 2 scores 0.5, rank 3 scores 0.25, rank 4 (if CVRMSE > 10.0) scores 0.0.
+
+These constants live at module scope in `scoring/engine.py`:
+- `CVRMSE_CEILING = 10.0`
+- `CVRMSE_TOP_K = 5`
+- `CVRMSE_DECAY_BASE = 0.5`
+
+**Historical note:** Prior to spec v6, CVRMSE was normalized as `clamp(1.0 - (cvrmse / 0.30), 0.0, 1.0)`. This created a dead zone where all miners above the 0.30 threshold received 0.0 on the 50% component, collapsing differentiation. Rank-based scoring resolves this regardless of the absolute CVRMSE level.
 
 ### NMBE (Normalized Mean Bias Error)
 
@@ -66,7 +80,7 @@ convergence = 1 - (simulations_used / simulation_budget)
 Each metric is normalized to [0, 1] then weighted:
 
 ```
-cvrmse_norm  = clamp(1.0 - (cvrmse / 0.30),  0.0, 1.0)
+cvrmse_norm  = rank-based (see CVRMSE section above)
 nmbe_norm    = clamp(1.0 - (|nmbe| / 0.10),   0.0, 1.0)
 r2_norm      = clamp(r_squared,                0.0, 1.0)
 conv_norm    = clamp(1.0 - (sims / budget),    0.0, 1.0)
@@ -90,11 +104,10 @@ If any of cvrmse, nmbe, or r_squared is non-finite (NaN or Inf) when the composi
 
 ### Normalization thresholds
 
-- CVRMSE threshold: 0.30 (achieving CVRMSE <= 0.30 gives full marks on that component)
-- NMBE threshold: 0.10 (achieving |NMBE| <= 0.10 gives full marks)
-- Both thresholds come from ASHRAE Guideline 14 for hourly calibration data
+- CVRMSE: rank-based (no fixed threshold; ceiling gate at CVRMSE=10.0). See CVRMSE section above.
+- NMBE threshold: 0.10 (achieving |NMBE| <= 0.10 gives full marks on that component). From ASHRAE Guideline 14 for hourly calibration data.
 - Scores that exceed thresholds are clamped to 0.0 (no negative scores)
-- All normalization uses `safe_clamp(x) = max(0.0, min(1.0, x))`, returning 0.0 for NaN or Inf inputs
+- All linear normalization uses `safe_clamp(x) = max(0.0, min(1.0, x))`, returning 0.0 for NaN or Inf inputs
 
 ## Weight Setting
 
@@ -133,41 +146,43 @@ This means consistent performance is rewarded over lucky single rounds.
 
 ## Scoring Examples
 
-### Example 1: Strong miner
+### Example 1: Two miners competing (rank-based CVRMSE)
 
-- CVRMSE: 0.05 (well below 0.30 threshold)
-- NMBE: 0.02 (well below 0.10 threshold)
-- R-squared: 0.95
-- Simulations used: 150 of 1000 budget
+Round with 2 miners. Miner A has CVRMSE 0.51, miner B has CVRMSE 0.70.
 
-```
-cvrmse_norm  = clamp(1.0 - 0.05/0.30)  = clamp(0.833) = 0.833
-nmbe_norm    = clamp(1.0 - 0.02/0.10)  = clamp(0.800) = 0.800
-r2_norm      = clamp(0.95)              = 0.950
-conv_norm    = clamp(1.0 - 150/1000)    = clamp(0.850) = 0.850
-
-composite = 0.50 * 0.833 + 0.25 * 0.800 + 0.15 * 0.950 + 0.10 * 0.850
-          = 0.417 + 0.200 + 0.143 + 0.085
-          = 0.844
-```
-
-### Example 2: Weak miner
-
-- CVRMSE: 0.40 (above threshold)
-- NMBE: 0.15 (above threshold)
-- R-squared: 0.60
-- Simulations used: 900 of 1000 budget
+Both are below the ceiling gate (CVRMSE_CEILING=10.0). Miner A ranks 1st, miner B ranks 2nd.
 
 ```
-cvrmse_norm  = clamp(1.0 - 0.40/0.30)  = clamp(-0.333) = 0.000
-nmbe_norm    = clamp(1.0 - 0.15/0.10)  = clamp(-0.500) = 0.000
-r2_norm      = clamp(0.60)              = 0.600
-conv_norm    = clamp(1.0 - 900/1000)    = clamp(0.100)  = 0.100
-
-composite = 0.50 * 0.000 + 0.25 * 0.000 + 0.15 * 0.600 + 0.10 * 0.100
-          = 0.000 + 0.000 + 0.090 + 0.010
-          = 0.100
+cvrmse_norm (A) = 1.0   (rank 1)
+cvrmse_norm (B) = 0.5   (rank 2: 1.0 * CVRMSE_DECAY_BASE^1 = 0.5)
 ```
+
+Assume both miners have NMBE=0.05, R-squared=0.70, 200 of 1000 simulations used:
+
+```
+nmbe_norm    = clamp(1.0 - 0.05/0.10)  = 0.500
+r2_norm      = clamp(0.70)              = 0.700
+conv_norm    = clamp(1.0 - 200/1000)    = 0.800
+
+composite (A) = 0.50 * 1.000 + 0.25 * 0.500 + 0.15 * 0.700 + 0.10 * 0.800
+              = 0.500 + 0.125 + 0.105 + 0.080 = 0.810
+
+composite (B) = 0.50 * 0.500 + 0.25 * 0.500 + 0.15 * 0.700 + 0.10 * 0.800
+              = 0.250 + 0.125 + 0.105 + 0.080 = 0.560
+```
+
+After power-law (p=2) and normalization: A captures approximately 68% of weight, B approximately 32%.
+
+### Example 2: Miner above ceiling gate
+
+- CVRMSE: 12.0 (above CVRMSE_CEILING=10.0)
+- cvrmse_norm = 0.0 regardless of rank
+
+```
+composite = 0.50 * 0.000 + 0.25 * nmbe_norm + 0.15 * r2_norm + 0.10 * conv_norm
+```
+
+The miner still scores on the other three components but is heavily penalized.
 
 ### Example 3: Failed submission
 
@@ -177,9 +192,9 @@ composite = 0.50 * 0.000 + 0.25 * 0.000 + 0.15 * 0.600 + 0.10 * 0.100
 
 ## Key Takeaways for Miners
 
-- CVRMSE dominates scoring (50%). Focus on minimizing prediction error first.
-- NMBE is the second priority (25%). Avoid systematic bias in your calibration.
-- Beating the ASHRAE thresholds (CVRMSE < 0.30, |NMBE| < 0.10) is the minimum viable performance. Going well below earns proportionally more.
+- CVRMSE dominates scoring (50%). Focus on minimizing prediction error first. CVRMSE is scored by rank: beating other miners matters more than clearing any fixed threshold.
+- NMBE is the second priority (25%). Avoid systematic bias in your calibration. The ASHRAE threshold (|NMBE| < 0.10) still applies as a normalization boundary.
+- The CVRMSE ceiling gate (CVRMSE=10.0) is a soft floor, not a meaningful target. Any calibration that runs will likely be below 10.0. Focus on outranking competitors, not on the ceiling.
 - Convergence efficiency matters at the margin (10%). If two miners achieve similar accuracy, the one using fewer simulations scores higher.
 - Consistency across rounds matters due to EMA smoothing. A miner scoring 0.7 every round will outrank one alternating between 0.9 and 0.3.
 
@@ -201,9 +216,19 @@ Running many low-quality miners to dilute a legitimate miner's share is mitigate
 
 The simulations_used field is self-reported by miners (10% of composite score). A miner can claim fewer simulations than actually used for a small convergence bonus. This advantage is bounded at 10% of the composite score and does not affect the 90% that depends on actual calibration quality. The component remains gameable at its Nash equilibrium (every rational miner reports 0), and is tracked as an open tier-2 hardening item in ROADMAP.md. Candidate replacements: validator-verifiable wall-clock submission time, or removal of the component. Testnet data drives the decision.
 
-### CVRMSE dead zone on hard rounds
+### CVRMSE physics floor
 
-When no miner clears the 0.30 hourly CVRMSE threshold, the 50% CVRMSE component collapses to zero for everyone and the composite is driven almost entirely by the remaining components. This is not a mechanism bug: it is a boundary condition that appears when the simplified model cannot physically represent the round's ground truth (for example, a heating-only RC model on summer cooling data). The Phase 1 roadmap work adds cooling support to the RC model, which resolves the most common case on testnet. Longer-horizon resolution tracks with Phases 2 and 3 as test cases diversify. See ROADMAP.md.
+The bestest_air test case with the current 7-parameter 1R-1C RC model against BOPTEST Modelica FCU has a physics-imposed CVRMSE floor of approximately 0.5. Miners converge toward this floor regardless of optimization budget. Tighter fits require a richer RC model with more zones or more parameters. This is a Phase 2+ concern, not a scoring bug.
+
+The old CVRMSE dead zone (pre-spec-v6) occurred when the linear formula collapsed all above-threshold miners to zero on the 50% component. Rank-based scoring (spec v6) resolves this: differentiation is relative to competitors, not relative to a fixed threshold. See ROADMAP.md for the historical context.
+
+### R-squared on low-variance outputs
+
+The R-squared component can produce very large negative values on outputs with near-zero variance (for example, cooling energy in winter or heating energy in summer). These are clipped to 0 by `max(0, R^2)`. The clip saves the scoring pipeline from instability, but the R-squared component provides little signal on those outputs. Consider restricting R-squared to zone_temperature output only, or dropping the component in a future spec version. Tracked as a new open item in ROADMAP.md.
+
+### Breakdown diagnostic divergence
+
+`validator/scoring/breakdown.py` still references `CVRMSE_THRESHOLD=0.30` for diagnostic display. This does not affect actual scoring (which is rank-based). The breakdown output may show misleading normalized CVRMSE component values when consulted for debugging. A code change is required to align it with rank-based scoring; tracked in ROADMAP.md.
 
 ### Zero-mean CVRMSE handling
 
