@@ -12,6 +12,7 @@ from scoring import (
     compute_r_squared,
     safe_clamp,
 )
+from scoring.engine import CVRMSE_DECAY_BASE, CVRMSE_TOP_K
 
 # ---------------------------------------------------------------------------
 # Metric tests
@@ -197,3 +198,133 @@ class TestScoringEngine:
         # Should not crash, weights should sum to 1.0
         assert math.isfinite(sum(weights.values()))
         assert abs(sum(weights.values()) - 1.0) < 1e-10
+
+
+class TestCVRMSEComponent:
+    """Rank-based CVRMSE component with top-K cap and ceiling gate (spec v6)."""
+
+    def test_cvrmse_component_ceiling_gate_rejects_above_threshold(self) -> None:
+        """CVRMSE above CVRMSE_CEILING produces zero component score."""
+        engine = ScoringEngine()
+        verified = {
+            0: VerifiedResult(cvrmse=0.5, nmbe=0.0, r_squared=0.9, simulations_used=100),
+            1: VerifiedResult(cvrmse=5.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+            2: VerifiedResult(cvrmse=15.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+        }
+        cvrmse_scores = engine._cvrmse_component_scores(verified)
+
+        assert cvrmse_scores[2] == 0.0
+        assert verified[2].cvrmse_ceiling_exceeded is True
+        assert verified[0].cvrmse_ceiling_exceeded is False
+        assert verified[1].cvrmse_ceiling_exceeded is False
+        # Two miners below ceiling: ranks 1 and 2 share the normalized decay weights.
+        assert cvrmse_scores[0] > cvrmse_scores[1] > 0
+
+    def test_cvrmse_component_top_k_cap(self) -> None:
+        """Only the top CVRMSE_TOP_K miners receive a non-zero component score."""
+        engine = ScoringEngine()
+        verified = {
+            i: VerifiedResult(cvrmse=0.1 * (i + 1), nmbe=0.0, r_squared=0.9, simulations_used=100) for i in range(7)
+        }
+        cvrmse_scores = engine._cvrmse_component_scores(verified)
+
+        # Ranks 1-5 (UIDs 0-4) nonzero; ranks 6-7 (UIDs 5-6) zeroed.
+        for i in range(CVRMSE_TOP_K):
+            assert cvrmse_scores[i] > 0, f"rank {i + 1} miner should be in top-K"
+        for i in range(CVRMSE_TOP_K, 7):
+            assert cvrmse_scores[i] == 0, f"rank {i + 1} miner should be outside top-K"
+        # The top-K scores normalize to 1.0.
+        assert abs(sum(cvrmse_scores.values()) - 1.0) < 1e-10
+
+    def test_cvrmse_component_exponential_decay(self) -> None:
+        """Rank-r miner gets raw weight base^(r-1); normalized across the top-K."""
+        engine = ScoringEngine()
+        verified = {
+            0: VerifiedResult(cvrmse=0.1, nmbe=0.0, r_squared=0.9, simulations_used=100),
+            1: VerifiedResult(cvrmse=0.2, nmbe=0.0, r_squared=0.9, simulations_used=100),
+            2: VerifiedResult(cvrmse=0.3, nmbe=0.0, r_squared=0.9, simulations_used=100),
+        }
+        cvrmse_scores = engine._cvrmse_component_scores(verified)
+
+        raw = [CVRMSE_DECAY_BASE**r for r in range(3)]  # [1.0, 0.5, 0.25]
+        total = sum(raw)
+        assert abs(cvrmse_scores[0] - raw[0] / total) < 1e-12
+        assert abs(cvrmse_scores[1] - raw[1] / total) < 1e-12
+        assert abs(cvrmse_scores[2] - raw[2] / total) < 1e-12
+
+    def test_cvrmse_component_all_miners_rejected(self) -> None:
+        """If every miner exceeds the ceiling, every CVRMSE component score is zero."""
+        engine = ScoringEngine()
+        verified = {
+            0: VerifiedResult(cvrmse=12.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+            1: VerifiedResult(cvrmse=50.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+            2: VerifiedResult(cvrmse=100.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+        }
+        cvrmse_scores = engine._cvrmse_component_scores(verified)
+
+        assert all(s == 0.0 for s in cvrmse_scores.values())
+        assert all(v.cvrmse_ceiling_exceeded for v in verified.values())
+        # compute() short-circuits to empty so the caller falls back to chain weights.
+        weights = engine.compute(verified)
+        assert weights == {}
+
+    def test_cvrmse_component_single_miner_passes(self) -> None:
+        """With only one miner below the ceiling, it captures the full normalized weight."""
+        engine = ScoringEngine()
+        verified = {
+            0: VerifiedResult(cvrmse=50.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+            1: VerifiedResult(cvrmse=20.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+            2: VerifiedResult(cvrmse=5.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+            3: VerifiedResult(cvrmse=11.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+            4: VerifiedResult(cvrmse=15.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+        }
+        cvrmse_scores = engine._cvrmse_component_scores(verified)
+
+        assert cvrmse_scores[2] == 1.0
+        for uid in (0, 1, 3, 4):
+            assert cvrmse_scores[uid] == 0.0
+            assert verified[uid].cvrmse_ceiling_exceeded is True
+
+    def test_cvrmse_component_tied_values_stable_ordering(self) -> None:
+        """Tied CVRMSEs produce a stable ordering; the pair still sums to 1.0."""
+        engine = ScoringEngine()
+        verified = {
+            0: VerifiedResult(cvrmse=3.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+            1: VerifiedResult(cvrmse=3.0, nmbe=0.0, r_squared=0.9, simulations_used=100),
+        }
+        cvrmse_scores = engine._cvrmse_component_scores(verified)
+
+        assert cvrmse_scores[0] > 0
+        assert cvrmse_scores[1] > 0
+        assert abs(sum(cvrmse_scores.values()) - 1.0) < 1e-10
+        # Stable sort by insertion order: UID 0 ranks first, gets the larger weight.
+        assert cvrmse_scores[0] > cvrmse_scores[1]
+
+    def test_composite_formula_unchanged_for_valid_round(self) -> None:
+        """Spot-check: composite = 0.50*cvrmse_rank + 0.25*nmbe + 0.15*r2 + 0.10*conv."""
+        engine = ScoringEngine()
+        verified = {
+            0: VerifiedResult(cvrmse=0.5, nmbe=0.02, r_squared=0.8, simulations_used=200),
+            1: VerifiedResult(cvrmse=1.5, nmbe=0.05, r_squared=0.6, simulations_used=800),
+        }
+        sim_budget = 1000
+        raw = engine.compute_raw(verified, sim_budget=sim_budget)
+
+        # Rank-based CVRMSE: rank 1 gets 1.0 / (1.0 + 0.5) = 0.667; rank 2 gets 0.333.
+        cvrmse_0 = 1.0 / 1.5
+        cvrmse_1 = 0.5 / 1.5
+
+        expected_0 = (
+            0.50 * cvrmse_0
+            + 0.25 * safe_clamp(1.0 - 0.02 / engine.NMBE_THRESHOLD)
+            + 0.15 * safe_clamp(0.8)
+            + 0.10 * safe_clamp(1.0 - 200 / sim_budget)
+        )
+        expected_1 = (
+            0.50 * cvrmse_1
+            + 0.25 * safe_clamp(1.0 - 0.05 / engine.NMBE_THRESHOLD)
+            + 0.15 * safe_clamp(0.6)
+            + 0.10 * safe_clamp(1.0 - 800 / sim_budget)
+        )
+        assert abs(raw[0] - expected_0) < 1e-12
+        assert abs(raw[1] - expected_1) < 1e-12

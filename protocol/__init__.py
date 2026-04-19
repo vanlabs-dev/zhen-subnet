@@ -1,6 +1,6 @@
 """Shared synapse definitions for validator-miner communication."""
 
-__spec_version__: int = 5
+__spec_version__: int = 6
 """Protocol spec version. Increment when scoring formula, synapse format,
 or verification logic changes in a backward-incompatible way. Internal
 versioning only, NOT the on-chain weight version.
@@ -24,6 +24,12 @@ History:
        removed from manifest (directories retained on disk for
        integration test fixtures). Manifest bumped to v2.0.0.
        Invalidates v4 EMA state on load.
+    6: Rank-based CVRMSE scoring with top-K cap. CVRMSE component
+       (50% weight) now uses round-local rank with exponential decay
+       (base=0.5) across top K=5 miners. Submissions with CVRMSE > 10.0
+       are rejected at the ceiling gate and receive zero CVRMSE
+       component score for the round. NMBE, R-squared, and convergence
+       components unchanged. Invalidates v5 EMA state on load.
 """
 
 WEIGHT_VERSION_KEY: int = 1000

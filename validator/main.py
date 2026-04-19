@@ -431,8 +431,9 @@ class ZhenValidator:
             if v.reason:
                 logger.info(f"  UID {uid}: REJECTED ({v.reason})")
             else:
+                ceiling_flag = " (CEILING EXCEEDED, component score=0)" if v.cvrmse_ceiling_exceeded else ""
                 logger.info(
-                    f"  UID {uid}: CVRMSE={v.cvrmse:.4f}, NMBE={v.nmbe:.4f}, "
+                    f"  UID {uid}: CVRMSE={v.cvrmse:.4f}{ceiling_flag}, NMBE={v.nmbe:.4f}, "
                     f"R2={v.r_squared:.4f}, sims={v.simulations_used}, "
                     f"composite={scores.get(uid, 0.0):.4f}"
                 )

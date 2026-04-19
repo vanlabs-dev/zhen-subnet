@@ -200,33 +200,48 @@ def test_sybil_attack_neutralized() -> None:
 
 
 def test_score_floor_zeros_garbage() -> None:
-    """Miners scoring below SCORE_FLOOR_RATIO of the top scorer get zero weight."""
+    """Miners scoring below SCORE_FLOOR_RATIO of the top scorer get zero weight.
+
+    Under spec v6 rank-based CVRMSE scoring, rank 2 of 2 still earns ~33% of
+    the CVRMSE weight pool, so a "bad but ranked" miner no longer falls below
+    the 5% floor via rank alone. Use a ceiling-exceeded CVRMSE on the garbage
+    miner so its CVRMSE component is zero and the remaining NMBE/R2/convergence
+    contributions stay below the floor.
+    """
     engine = ScoringEngine()
     verified = {
-        0: VerifiedResult(cvrmse=0.05, nmbe=0.02, r_squared=0.95, simulations_used=150),  # ~0.844
-        1: VerifiedResult(cvrmse=0.30, nmbe=0.10, r_squared=0.0, simulations_used=750),  # ~0.025
+        0: VerifiedResult(cvrmse=0.05, nmbe=0.02, r_squared=0.95, simulations_used=150),
+        1: VerifiedResult(cvrmse=15.0, nmbe=0.10, r_squared=0.0, simulations_used=750),
     }
 
     raw = engine.compute_raw(verified)
     weights = engine.compute(verified)
 
-    # The garbage miner's raw composite is below the floor.
+    # The garbage miner's raw composite (NMBE/R2/convergence only; CVRMSE ceiling-rejected)
+    # is below the floor.
     assert raw[1] < raw[0] * engine.SCORE_FLOOR_RATIO
     # ...so it earns zero weight even though it had a positive raw composite.
     assert weights[1] == 0.0
     assert math.isclose(weights[0], 1.0, abs_tol=1e-9)
 
 
-def test_power_law_preserves_equality() -> None:
-    """Two miners with identical metrics must still receive equal weight."""
+def test_power_law_does_not_starve_tied_miners() -> None:
+    """Tied CVRMSE values rank by stable sort (UID order), so the leading miner
+    gets a strictly larger share than the trailing miner. Neither should be
+    zeroed out by the floor or power-law, and the pair must sum to 1.0.
+
+    Under spec v6, rank-based CVRMSE means "identical metrics" no longer
+    guarantees equal weight; the tiebreak is deterministic. What still must
+    hold is that both tied miners remain in the weight vector.
+    """
     engine = ScoringEngine()
     verified = {
         0: VerifiedResult(cvrmse=0.10, nmbe=0.02, r_squared=0.85, simulations_used=200),
         1: VerifiedResult(cvrmse=0.10, nmbe=0.02, r_squared=0.85, simulations_used=200),
     }
     weights = engine.compute(verified)
-    assert math.isclose(weights[0], 0.5, abs_tol=1e-9)
-    assert math.isclose(weights[1], 0.5, abs_tol=1e-9)
+    assert weights[0] > weights[1] > 0
+    assert math.isclose(sum(weights.values()), 1.0, abs_tol=1e-9)
 
 
 def test_power_law_amplifies_quality() -> None:
