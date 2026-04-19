@@ -41,6 +41,10 @@ class RCNetworkBackend:
     The total_cooling_energy_kWh output is always present in SimulationResult
     (populated with zeros in heating-only mode) so downstream consumers can
     assume a stable output signature.
+
+    Each mode emits both an electrical consumption output (Q / COP / 1000) and
+    a thermal output (Q / 1000) so configs can score against BOPTEST variables
+    reporting either quantity.
     """
 
     def __init__(self, config: dict[str, Any], params: dict[str, float]) -> None:
@@ -102,14 +106,16 @@ class RCNetworkBackend:
             end_hour: Last hour of the simulation window (exclusive).
 
         Returns:
-            SimulationResult with zone_air_temperature_C, total_heating_energy_kWh,
-            and total_cooling_energy_kWh arrays. The cooling array is populated
-            with zeros when has_cooling is False.
+            SimulationResult with zone_air_temperature_C plus paired
+            electrical/thermal arrays for both heating and cooling. The
+            cooling arrays are populated with zeros when has_cooling is False.
         """
         n_steps = end_hour - start_hour
         T_zone = np.zeros(n_steps, dtype=np.float64)
         Q_heating = np.zeros(n_steps, dtype=np.float64)
+        Q_heating_thermal = np.zeros(n_steps, dtype=np.float64)
         Q_cooling = np.zeros(n_steps, dtype=np.float64)
+        Q_cooling_thermal = np.zeros(n_steps, dtype=np.float64)
 
         # Initialize zone temperature from outdoor temp at start hour
         T_zone[0] = self.weather["temperature"][start_hour]
@@ -139,6 +145,7 @@ class RCNetworkBackend:
                 # Heating mode: deliver enough heat to reach heating setpoint
                 Q_hvac = (T_heat_setpoint - T_zone[i - 1]) * self.C_zone / np.float64(self.dt)
                 Q_heating[i] = Q_hvac / self.cop / np.float64(1000.0)
+                Q_heating_thermal[i] = Q_hvac / np.float64(1000.0)
             elif self.has_cooling and self.cop_cooling is not None:
                 T_cool_setpoint = self.schedules["cooling_setpoint"][hour]
                 if T_zone[i - 1] > T_cool_setpoint:
@@ -147,6 +154,7 @@ class RCNetworkBackend:
                     # energy consumption.
                     Q_hvac = -(T_zone[i - 1] - T_cool_setpoint) * self.C_zone / np.float64(self.dt)
                     Q_cooling[i] = abs(Q_hvac) / self.cop_cooling / np.float64(1000.0)
+                    Q_cooling_thermal[i] = abs(Q_hvac) / np.float64(1000.0)
             # else: idle (deadband or cooling unavailable); Q_hvac stays 0
 
             dT = (Q_total + Q_hvac) * np.float64(self.dt) / self.C_zone
@@ -156,6 +164,8 @@ class RCNetworkBackend:
             outputs={
                 "zone_air_temperature_C": T_zone.tolist(),
                 "total_heating_energy_kWh": Q_heating.tolist(),
+                "total_heating_thermal_kWh": Q_heating_thermal.tolist(),
                 "total_cooling_energy_kWh": Q_cooling.tolist(),
+                "total_cooling_thermal_kWh": Q_cooling_thermal.tolist(),
             }
         )

@@ -365,17 +365,92 @@ class TestCooling:
         cooling = result.outputs["total_cooling_energy_kWh"]
         assert all(q >= 0 for q in cooling)
 
-    def test_simulation_result_always_contains_three_outputs(self) -> None:
-        """Heating-only configs still expose total_cooling_energy_kWh (as zeros)."""
+    def test_simulation_result_always_contains_five_outputs(self) -> None:
+        """Heating-only configs still expose all five output keys (cooling as zeros)."""
         backend = _make_backend()
         result = backend.run(0, 24)
 
         assert set(result.outputs.keys()) == {
             "zone_air_temperature_C",
             "total_heating_energy_kWh",
+            "total_heating_thermal_kWh",
             "total_cooling_energy_kWh",
+            "total_cooling_thermal_kWh",
         }
         assert all(q == 0 for q in result.outputs["total_cooling_energy_kWh"])
+        assert all(q == 0 for q in result.outputs["total_cooling_thermal_kWh"])
+
+    def test_thermal_and_electrical_heating_differ_by_cop(
+        self,
+        cooling_tc: Callable[..., tuple[dict[str, Any], dict[str, float]]],
+    ) -> None:
+        """During heating, thermal equals electrical times COP; idle steps are zero."""
+        config, params = cooling_tc(weather_temp=5.0, cool_setpoint=24.0)
+        params["hvac_cop"] = 3.0
+        backend = RCNetworkBackend(config, params)
+        result = backend.run(0, 48)
+
+        electrical = result.outputs["total_heating_energy_kWh"]
+        thermal = result.outputs["total_heating_thermal_kWh"]
+
+        active_steps = [i for i, q in enumerate(electrical) if q > 0]
+        assert active_steps, "Expected some active heating steps at 5C outdoor"
+
+        for i in active_steps:
+            assert thermal[i] == pytest.approx(electrical[i] * 3.0)
+
+        for i, q in enumerate(electrical):
+            if q == 0:
+                assert thermal[i] == 0
+
+    def test_thermal_and_electrical_cooling_differ_by_cop(
+        self,
+        cooling_tc: Callable[..., tuple[dict[str, Any], dict[str, float]]],
+    ) -> None:
+        """During cooling, thermal equals electrical times cooling COP; idle steps are zero."""
+        config, params = cooling_tc(weather_temp=30.0, cool_setpoint=24.0)
+        params["hvac_cop_cooling"] = 2.5
+        backend = RCNetworkBackend(config, params)
+        result = backend.run(0, 48)
+
+        electrical = result.outputs["total_cooling_energy_kWh"]
+        thermal = result.outputs["total_cooling_thermal_kWh"]
+
+        active_steps = [i for i, q in enumerate(electrical) if q > 0]
+        assert active_steps, "Expected some active cooling steps at 30C outdoor"
+
+        for i in active_steps:
+            assert thermal[i] == pytest.approx(electrical[i] * 2.5)
+
+        for i, q in enumerate(electrical):
+            if q == 0:
+                assert thermal[i] == 0
+
+    def test_thermal_outputs_always_present(
+        self,
+        cooling_tc: Callable[..., tuple[dict[str, Any], dict[str, float]]],
+    ) -> None:
+        """Both thermal output keys exist regardless of whether the mode was active."""
+        # Heating-only (existing registry fixture)
+        heating_result = _make_backend().run(0, 24)
+        assert "total_heating_thermal_kWh" in heating_result.outputs
+        assert "total_cooling_thermal_kWh" in heating_result.outputs
+
+        # Cooling-enabled
+        config, params = cooling_tc(weather_temp=30.0, cool_setpoint=24.0)
+        cooling_result = RCNetworkBackend(config, params).run(0, 48)
+        assert "total_heating_thermal_kWh" in cooling_result.outputs
+        assert "total_cooling_thermal_kWh" in cooling_result.outputs
+
+    def test_thermal_outputs_non_negative(
+        self,
+        cooling_tc: Callable[..., tuple[dict[str, Any], dict[str, float]]],
+    ) -> None:
+        """Thermal arrays hold absolute magnitudes and must never be negative."""
+        config, params = cooling_tc(weather_temp=30.0, cool_setpoint=24.0)
+        result = RCNetworkBackend(config, params).run(0, 48)
+        assert all(q >= 0 for q in result.outputs["total_heating_thermal_kWh"])
+        assert all(q >= 0 for q in result.outputs["total_cooling_thermal_kWh"])
 
     @pytest.mark.parametrize(
         ("with_cooling_cop", "with_cooling_setpoint", "expected"),
