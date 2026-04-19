@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import contextlib
 import importlib.util
+import json
 import logging
 import os
 import signal
@@ -200,6 +201,35 @@ class ZhenValidator:
         logger.info(f"My UID: {self.my_uid}")
         logger.info(f"Neurons in metagraph: {len(self.metagraph.neurons)}")
 
+    def _summarize_signal(self, data: dict[str, list[float]]) -> str:
+        """Produce a one-line summary of training data signal characteristics.
+
+        For each output variable, reports mean, std, and fraction of zero
+        (or near-zero) samples. A high zero-fraction on the energy output
+        indicates the test period has no HVAC signal (summer for a
+        heating-only test case), which is known to produce dead-zone
+        CVRMSE scores under the current RC model.
+        """
+        import math
+
+        segments = []
+        for name, values in data.items():
+            if not values:
+                segments.append(f"{name}: empty")
+                continue
+            n = len(values)
+            mean = sum(values) / n
+            variance = sum((v - mean) ** 2 for v in values) / n
+            std = math.sqrt(variance)
+            zero_fraction = sum(1 for v in values if abs(v) < 1e-6) / n
+            segments.append(f"{name} mean={mean:.3f} std={std:.3f} zero_frac={zero_fraction:.2f}")
+        return "; ".join(segments)
+
+    def _format_params_for_log(self, params: dict[str, float]) -> str:
+        """Format a miner's calibrated params as JSON for a single log line."""
+        rounded = {k: round(float(v), 4) for k, v in params.items()}
+        return json.dumps(rounded)
+
     def _get_miner_axons(self) -> tuple[list[Any], list[int]]:
         """Get axon info for all miners (excluding self).
 
@@ -345,6 +375,7 @@ class ZhenValidator:
         training_data = await self.orchestrator.generate_ground_truth(
             test_case, train_period, local_mode=self.local_mode
         )
+        logger.info(f"Training signal: {self._summarize_signal(training_data)}")
 
         # 4. Build test case config
         config = self.orchestrator.load_test_case_config(test_case["id"])
@@ -405,6 +436,7 @@ class ZhenValidator:
                     f"R2={v.r_squared:.4f}, sims={v.simulations_used}, "
                     f"composite={scores.get(uid, 0.0):.4f}"
                 )
+                logger.info(f"  UID {uid} params: {self._format_params_for_log(v.calibrated_params)}")
 
         # 9. Persist per-miner scores
         await self.scoring_db.insert_round_scores(

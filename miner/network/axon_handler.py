@@ -4,6 +4,7 @@ Validates incoming synapses, checks manifest version compatibility,
 and dispatches challenges to the calibration engine.
 """
 
+import json
 import logging
 from typing import Any
 
@@ -68,6 +69,12 @@ class CalibrationHandler:
             synapse.metadata = dict(output.metadata)
 
             logger.info(f"Calibration complete: cvrmse={output.training_cvrmse:.4f}, sims={output.simulations_used}")
+
+            # Diagnostic: log calibrated parameters so we can diagnose byte-identical
+            # CVRMSE convergence across miners (suspected parameter-bounds corners when
+            # training signal is weak).
+            formatted_params = {k: round(float(v), 4) for k, v in output.calibrated_params.items()}
+            logger.info(f"Calibrated params: {json.dumps(formatted_params)}")
 
         except Exception as e:
             logger.error(f"Calibration failed: {e}")
