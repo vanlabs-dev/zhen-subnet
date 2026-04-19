@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import shutil
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +15,93 @@ from simulation.rc_network import RCNetworkBackend
 TEST_CASE_ID = "bestest_hydronic_heat_pump"
 REGISTRY_SRC = Path(__file__).resolve().parents[2] / "registry" / "test_cases" / TEST_CASE_ID
 ZHEN_DIR = Path.home() / ".zhen" / "test_cases" / TEST_CASE_ID
+
+
+def _write_cooling_test_case(
+    tmp_path: Path,
+    weather_temp: float = 30.0,
+    cool_setpoint: float = 24.0,
+    heat_setpoint: float = 20.0,
+    *,
+    with_cooling_setpoint: bool = True,
+    with_cooling_cop: bool = True,
+    n_hours: int = 48,
+) -> tuple[dict[str, Any], dict[str, float], Path]:
+    """Write a minimal test case with cooling-enabled schedule for RC tests.
+
+    Files land under ~/.zhen/test_cases/cooling_rc_<tmp_path.name>/ so the
+    RCNetworkBackend can resolve them via its config["test_case_id"] lookup.
+    Returns (config, params, tc_dir); callers must remove tc_dir on teardown.
+
+    Args:
+        tmp_path: Pytest tmp_path; its name supplies a unique test_case_id.
+        weather_temp: Constant outdoor temperature (C) for every hour.
+        cool_setpoint: Cooling setpoint (C) when with_cooling_setpoint is True.
+        heat_setpoint: Heating setpoint (C) for every hour.
+        with_cooling_setpoint: Include cooling_setpoint in schedules.json.
+        with_cooling_cop: Include hvac_cop_cooling in both params and defaults.
+        n_hours: Length of the weather and schedule arrays.
+    """
+    tc_id = f"cooling_rc_{tmp_path.name}"
+    tc_dir = Path.home() / ".zhen" / "test_cases" / tc_id
+    tc_dir.mkdir(parents=True, exist_ok=True)
+
+    weather = {
+        "temperature": [weather_temp] * n_hours,
+        "solar_radiation": [0.0] * n_hours,
+    }
+    (tc_dir / "weather.json").write_text(json.dumps(weather))
+
+    schedules: dict[str, list[float]] = {
+        "internal_gains": [0.0] * n_hours,
+        "heating_setpoint": [heat_setpoint] * n_hours,
+    }
+    if with_cooling_setpoint:
+        schedules["cooling_setpoint"] = [cool_setpoint] * n_hours
+    (tc_dir / "schedules.json").write_text(json.dumps(schedules))
+
+    defaults: dict[str, float] = {
+        "wall_r_value": 3.5,
+        "roof_r_value": 5.0,
+        "zone_capacitance": 200000.0,
+        "infiltration_ach": 0.5,
+        "hvac_cop": 3.5,
+        "solar_gain_factor": 0.4,
+    }
+    if with_cooling_cop:
+        defaults["hvac_cop_cooling"] = 3.0
+
+    config: dict[str, Any] = {
+        "test_case_id": tc_id,
+        "defaults": defaults,
+    }
+    (tc_dir / "config.json").write_text(json.dumps(config))
+
+    params = dict(defaults)
+    return config, params, tc_dir
+
+
+@pytest.fixture
+def cooling_tc(
+    tmp_path: Path,
+) -> Generator[Callable[..., tuple[dict[str, Any], dict[str, float]]], None, None]:
+    """Factory fixture that writes cooling-enabled test cases and cleans up.
+
+    Yields a callable accepting the same kwargs as _write_cooling_test_case
+    (except tmp_path, which is bound from the fixture). Each created test
+    case directory is removed during teardown.
+    """
+    created: list[Path] = []
+
+    def _factory(**kwargs: Any) -> tuple[dict[str, Any], dict[str, float]]:
+        config, params, tc_dir = _write_cooling_test_case(tmp_path, **kwargs)
+        created.append(tc_dir)
+        return config, params
+
+    yield _factory
+
+    for p in created:
+        shutil.rmtree(p, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -188,3 +275,128 @@ class TestOutputShape:
         filtered = result.get_outputs(["zone_air_temperature_C"])
         assert "zone_air_temperature_C" in filtered
         assert "total_heating_energy_kWh" not in filtered
+
+
+class TestCooling:
+    """Coverage for the dual-mode thermostat and the has_cooling gate."""
+
+    def test_cooling_mode_activates_when_configured(
+        self,
+        cooling_tc: Callable[..., tuple[dict[str, Any], dict[str, float]]],
+    ) -> None:
+        """Warm weather with cooling setpoint and cop produces non-zero cooling energy."""
+        config, params = cooling_tc(weather_temp=30.0, cool_setpoint=24.0)
+        backend = RCNetworkBackend(config, params)
+        result = backend.run(0, 48)
+
+        cooling = result.outputs["total_cooling_energy_kWh"]
+        assert any(q > 0 for q in cooling), "Expected some cooling energy at 30C outdoor"
+
+    def test_heating_still_works_with_cooling_capable_config(
+        self,
+        cooling_tc: Callable[..., tuple[dict[str, Any], dict[str, float]]],
+    ) -> None:
+        """Cold weather with cooling-capable config still triggers heating, never cooling."""
+        config, params = cooling_tc(weather_temp=5.0, cool_setpoint=24.0)
+        backend = RCNetworkBackend(config, params)
+        result = backend.run(0, 48)
+
+        heating = result.outputs["total_heating_energy_kWh"]
+        cooling = result.outputs["total_cooling_energy_kWh"]
+
+        assert any(q > 0 for q in heating), "Expected heating at 5C outdoor"
+        assert all(q == 0 for q in cooling), "Cooling must stay at zero when zone is below heat setpoint"
+
+    def test_idle_in_deadband(
+        self,
+        cooling_tc: Callable[..., tuple[dict[str, Any], dict[str, float]]],
+    ) -> None:
+        """Zone initialized inside the deadband remains idle for both HVAC modes."""
+        config, params = cooling_tc(weather_temp=22.0, cool_setpoint=24.0, heat_setpoint=20.0)
+        backend = RCNetworkBackend(config, params)
+        result = backend.run(0, 48)
+
+        heating = result.outputs["total_heating_energy_kWh"]
+        cooling = result.outputs["total_cooling_energy_kWh"]
+
+        assert all(q == 0 for q in heating), "Heating must be zero in deadband"
+        assert all(q == 0 for q in cooling), "Cooling must be zero in deadband"
+
+    def test_backward_compat_missing_cooling_setpoint(self) -> None:
+        """Existing heating-only schedule with a cooling cop param still runs heating-only."""
+        config = _load_config()
+        params = dict(config["defaults"])
+        params["hvac_cop_cooling"] = 3.0  # cop provided, but schedule has no cooling_setpoint
+
+        backend = RCNetworkBackend(config, params)
+        result = backend.run(0, 168)
+
+        assert backend.has_cooling is False
+        cooling = result.outputs["total_cooling_energy_kWh"]
+        assert all(q == 0 for q in cooling)
+
+    def test_backward_compat_missing_cooling_cop_param(
+        self,
+        cooling_tc: Callable[..., tuple[dict[str, Any], dict[str, float]]],
+    ) -> None:
+        """Schedule with cooling_setpoint but no hvac_cop_cooling falls back to heating-only."""
+        config, params = cooling_tc(weather_temp=30.0, with_cooling_cop=False)
+        # Helper omits hvac_cop_cooling from defaults when with_cooling_cop is False;
+        # params was built from defaults so it also lacks the key.
+        assert "hvac_cop_cooling" not in config["defaults"]
+        assert "hvac_cop_cooling" not in params
+
+        backend = RCNetworkBackend(config, params)
+        result = backend.run(0, 48)
+
+        assert backend.has_cooling is False
+        cooling = result.outputs["total_cooling_energy_kWh"]
+        assert all(q == 0 for q in cooling)
+
+    def test_cooling_energy_reported_as_positive(
+        self,
+        cooling_tc: Callable[..., tuple[dict[str, Any], dict[str, float]]],
+    ) -> None:
+        """Cooling energy is reported as absolute consumption (never negative)."""
+        config, params = cooling_tc(weather_temp=30.0, cool_setpoint=24.0)
+        backend = RCNetworkBackend(config, params)
+        result = backend.run(0, 48)
+
+        cooling = result.outputs["total_cooling_energy_kWh"]
+        assert all(q >= 0 for q in cooling)
+
+    def test_simulation_result_always_contains_three_outputs(self) -> None:
+        """Heating-only configs still expose total_cooling_energy_kWh (as zeros)."""
+        backend = _make_backend()
+        result = backend.run(0, 24)
+
+        assert set(result.outputs.keys()) == {
+            "zone_air_temperature_C",
+            "total_heating_energy_kWh",
+            "total_cooling_energy_kWh",
+        }
+        assert all(q == 0 for q in result.outputs["total_cooling_energy_kWh"])
+
+    @pytest.mark.parametrize(
+        ("with_cooling_cop", "with_cooling_setpoint", "expected"),
+        [
+            (True, True, True),
+            (True, False, False),
+            (False, True, False),
+            (False, False, False),
+        ],
+    )
+    def test_has_cooling_flag_gates_correctly(
+        self,
+        cooling_tc: Callable[..., tuple[dict[str, Any], dict[str, float]]],
+        with_cooling_cop: bool,
+        with_cooling_setpoint: bool,
+        expected: bool,
+    ) -> None:
+        """has_cooling is True only when both the cop param and the schedule entry exist."""
+        config, params = cooling_tc(
+            with_cooling_cop=with_cooling_cop,
+            with_cooling_setpoint=with_cooling_setpoint,
+        )
+        backend = RCNetworkBackend(config, params)
+        assert backend.has_cooling is expected
