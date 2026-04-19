@@ -50,7 +50,7 @@ RC network model runs, produces physically plausible outputs, and passes determi
 
 - [x] Implement `compute_cvrmse`, `compute_nmbe`, `compute_r_squared`
 - [x] Implement `safe_clamp` normalization
-- [x] Implement `ScoringEngine.compute()` with all four components (CVRMSE 50%, NMBE 25%, R-squared 15%, convergence 10%) plus power-law (p=2) amplification and 5% score floor (spec_version 2)
+- [x] Implement `ScoringEngine.compute()` with all four components (CVRMSE 50%, NMBE 25%, R-squared 15%, convergence 10%) plus power-law (p=2) amplification and 5% score floor. Introduced in spec_version 2; current spec_version is 4, see `protocol/__init__.py` for the full history.
 - [x] Implement weight-setting with chain-weight fallback on all-failure
 - [x] Implement `EMATracker` (alpha=0.3, non-finite decay, prune 1e-6)
 - [x] Unit tests: every edge case (zero submissions, all infeasible, single miner, all tied, NaN/Inf inputs)
@@ -71,12 +71,12 @@ Scoring engine passes all unit tests including adversarial inputs. **Met.**
 
 - [x] Implement `ZhenSimulator` unified interface (`simulation/zhen_simulator.py`). `get_outputs()` is implemented; raises `RuntimeError` if called before `run()`. Only `rc_network` backend supported.
 - [x] `reduced_energyplus.py` exists as a Phase 2 placeholder (docstring only, not implemented).
-- [x] Create first complete test case: `bestest_hydronic_heat_pump` (and `bestest_air`, `bestest_hydronic`)
+- [x] Create first complete test cases: `bestest_hydronic_heat_pump`, `bestest_hydronic`, and `bestest_air` (the last is staged in the registry; active manifest rotation excludes it pending Phase 1 RC model cooling support, see ROADMAP.md)
   - [x] RC network simplified model
   - [x] `config.json` with parameter bounds, `scoring_outputs` list, defaults
   - [x] Weather data (Brussels)
 - [x] BOPTEST integration via `BOPTESTClient` REST API wrapper
-- [x] Implement manifest.json schema and `ManifestLoader`. Manifest v1.1.0 with 3 test cases.
+- [x] Implement manifest.json schema and `ManifestLoader`. Initial publish v1.1.0 with three cases; current active manifest is v1.2.0 (two-case rotation, paired with `protocol.__spec_version__ = 4`).
 - [x] Docker: `Dockerfile.miner` and `Dockerfile.validator`, base `python:3.12-slim`.
 - [x] Determinism test: same params produce same outputs.
 
@@ -168,13 +168,13 @@ Full round loop works on local Bittensor chain. Validator sends challenge, miner
 - [x] Register owner validator + reference miner (UIDs 0, 1, 2)
 - [ ] Deploy BOPTEST emulator images to Docker Hub
 - [ ] Deploy simplified model images to Docker Hub
-- [x] Publish `manifest.json` v1.1.0
+- [x] Publish initial `manifest.json` v1.1.0 (current active manifest: v1.2.0)
 - [x] Run first successful calibration round (CVRMSE 0.0399 with n_calls=500, then 0.1912 with n_calls=100 in 44 seconds)
 - [x] Wire BOPTEST ground truth path for two-model architecture (commits: fe16a71, 79c7778, c5e3433, 91d344a, 8183131, 3b83904)
 - [x] Prove two-model architecture: BOPTEST generates ground truth, miner calibrates RC model, scored via ASHRAE metrics. Two consecutive rounds: CVRMSE 1.2552 and 0.9644 (see [ROADMAP.md](ROADMAP.md) Milestone 1)
-- [x] Testnet hardening: spec_version=2 (power-law + floor), fsync on state writes, spec_version validation on state load, challenge timeout 600s, cap metadata size (MAX_METADATA_BYTES=10000, MAX_PARAMS=50), miner manifest version mismatch warnings, per-call unique tmp files for state saves, copy_weights_from_chain fallback
+- [x] Testnet hardening: introduced spec_version=2 (power-law + floor); subsequent bumps to v3 (bestest_air pulled) and v4 (expanded required_hash_fields) each invalidate prior EMA state on load. Challenge timeout 600s, cap metadata size (MAX_METADATA_BYTES=10000, MAX_PARAMS=50), miner manifest version mismatch warnings, copy_weights_from_chain fallback. JSON state file (fsync + per-call unique tmp files) replaced by SQLite scoring_db with WAL; legacy JSON is archived on first open.
 - [ ] Run validator + miner for 48h continuous, verify stability
-- [x] Add 2 more test cases (3 total: bestest_hydronic_heat_pump, bestest_air, bestest_hydronic)
+- [x] Add test cases: bestest_hydronic_heat_pump, bestest_hydronic, bestest_air (bestest_air pulled from the active manifest in v3; stays in the registry and returns with Phase 1 cooling support, see ROADMAP.md)
 - [ ] Implement and deploy public dashboard (planned for post-mainnet)
 - [ ] Implement and deploy local eval harness (planned, not yet built)
 - [x] Write MINE.md

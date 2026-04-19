@@ -2,10 +2,67 @@
 
 <!-- FORMATTING RULE: This document must NEVER contain em dashes or en dashes. Use commas, periods, colons, or parentheses instead. -->
 
-**Status:** Milestone 3 complete, testnet hardening complete, bestest_air pulled pending FCU support
-**Updated:** 2026-04-18
+**Status:** Milestone 3 complete, testnet hardening complete, bestest_air pulled pending RC model cooling support (Phase 1 technical work)
+**Updated:** 2026-04-19
 
-This document tracks the proving milestones from testnet validation through mainnet launch and revenue. Each milestone has concrete exit criteria. No milestone is skippable.
+This document tracks two parallel tracks: the proving milestones from testnet validation through mainnet launch and revenue, and the technical capability phases that expand what the subnet can physically calibrate. Both tracks share the same codebase and the same incentive mechanism. Neither is skippable, and they must advance together: a proving milestone that requires multi-zone buildings is gated on the technical phase that adds multi-zone support.
+
+---
+
+## Target Markets
+
+Zhen is built primarily for two customer segments. Technical scope, test case selection, and algorithm choices flow from these.
+
+**Market 1: Commercial HVAC model predictive control.** Vendors such as BrainBox AI, PassiveLogic, and internal teams at Siemens, Johnson Controls, Honeywell, and Schneider Electric who build MPC stacks for mid and large commercial buildings. They need calibrated thermal and HVAC models as the foundation of their control layer. The calibration step is the bottleneck, not the controller. Zhen sells the calibration output, not the MPC.
+
+**Market 3: Grid services and demand response.** Utilities, aggregators, and ISO-facing platforms that need accurate thermal models to forecast building flexibility, shed load, or participate in ancillary services markets. Same core asset as Market 1 (a calibrated thermal and HVAC model) used for a different downstream decision.
+
+**Market 4 (fallout coverage): Single-zone residential.** Current test cases (bestest_hydronic_heat_pump, bestest_hydronic) fall in this segment. It is not actively optimized for, but the subnet covers it as a byproduct of validating the core mechanism on simple geometry before scaling.
+
+**Market 2 (deferred): M&V and ESCO compliance.** ASHRAE Guideline 14 calibrations for Measurement and Verification of energy conservation measures. Enterprise sales cycle, regulated acceptance criteria, and a procurement posture that does not fit a new subnet. Deferred indefinitely; revisit only if a channel partner shows up.
+
+---
+
+## Technical Capability Phases
+
+Phases expand what the simplified model can physically represent. Each phase gates specific proving milestones and specific markets. A phase is not declared complete until the active manifest reflects its scope and miner scores stabilize there.
+
+### Phase 1: Single-zone year-round cooling (next work)
+
+**Goal:** Resolve the live-run finding that ~90% of rounds produce uniform 0.5/0.5 weights because the heating-only RC model cannot fit summer periods of a heating-only building. Add cooling support and a test case that exercises it.
+
+**Scope:**
+- Extend `simulation/rc_network.py` with separate heating and cooling modes, each with its own parameter set. Reject a single symmetric coefficient; heating and cooling coefficients are not physically equivalent.
+- Re-activate `bestest_air` in the manifest. The building has a four-pipe fan coil unit and exercises cooling year-round.
+- Drop `bestest_hydronic` from the active manifest (heating-only, year-round cooling uncovered). Archive its DB rows under the v4 to v5 spec bump, same pattern as v2 to v3.
+- Keep `bestest_hydronic_heat_pump` (it has a heat pump that reverses for cooling, compatible with the cooling-capable RC model).
+- End state: active manifest = `{bestest_hydronic_heat_pump, bestest_air}`, both exercising year-round operation.
+
+**Calibration algorithm decision:** Retain Bayesian optimization via scikit-optimize. If the parameter space expands meaningfully with separate heating and cooling parameter sets, bump `n_calls` accordingly. Revisit the algorithm choice in Phase 2 planning; do not preemptively migrate.
+
+**Exits:** uniform-weight round rate on mainnet/testnet drops well below 50%. `bestest_air` scores compete with `bestest_hydronic_heat_pump` across multiple seasons. Open finding 2.1 (CVRMSE dead zone) reframes from "mechanism bug" to "Phase 1 boundary resolved."
+
+### Phase 2: Two-zone commercial (Market 1 and 3 minimum viable scope)
+
+**Goal:** First real multi-zone architecture work. Introduces zone-to-zone thermal coupling and shared HVAC plant modeling, which is the distinguishing requirement of commercial buildings vs. residential.
+
+**Scope:**
+- Target case: `multizone_office_simple_hydronic` (Brussels, 2 zones, fan-coils + heat pump + chiller).
+- RC model gains inter-zone coupling terms and a shared-plant abstraction (single heat pump or chiller feeding multiple zone loops).
+- Manifest adds the new case; rotation keeps Phase 1 cases during overlap period.
+
+**Open decisions tracked at Phase 1 exit:**
+- Whether Bayesian optimization scales to the expanded parameter space (expected: marginal; will validate empirically before picking a migration path).
+- Whether convergence budgeting needs to change per test case based on simulation cost.
+
+### Phase 3: Five-zone reference commercial (full Market 1 and 3 scope)
+
+**Goal:** Reach a DOE-style reference commercial building. This is the canonical artifact that commercial MPC vendors evaluate against.
+
+**Scope:**
+- Target case: `multizone_office_simple_air` (Chicago, 5-zone VAV with reheat, DOE reference).
+- Full multi-zone VAV with reheat, realistic plant model, climate with large annual thermal swings.
+- Calibration algorithm likely upgrades beyond scikit-optimize Bayesian at this point. Candidate direction: surrogate-assisted search or ensemble-of-solvers. Decision deferred to Phase 3 planning.
 
 ---
 
@@ -155,7 +212,7 @@ The `bestest_air` test case (BESTEST building with four-pipe fan coil unit) is p
 - Supply air tempering dynamics
 - Bi-directional HVAC with separate heating and cooling capacities
 
-Re-adding `bestest_air` requires extending the RC model to support bi-directional HVAC with FCU-specific parameters. Estimated effort: 2 to 3 weeks including physics validation against BOPTEST. Not blocking Milestone 4 or 5; tracked here as an explicit deferral so the test case is not lost.
+Re-adding `bestest_air` is the work of **Phase 1** above. Separate heating and cooling parameter sets are required; a single symmetric coefficient is rejected. Once Phase 1 ships, `bestest_air` returns to the active manifest and `bestest_hydronic` rotates out.
 
 ---
 
@@ -183,8 +240,9 @@ Re-adding `bestest_air` requires extending the RC model to support bi-directiona
 - 95%+ of rounds complete within tempo
 - No inf, NaN, or zero-division in scoring
 - Documentation complete and externally verified: MINE.md, SCORING.md, RULES.md, CALIBRATE.md, VALIDATE.md
-- Dashboard operational
 - Register on Bittensor mainnet
+
+The public dashboard is deferred to post-mainnet (see IMPLEMENTATION.md Phase 6 and ARCHITECTURE.md Section 7). It is not required for launch.
 
 ---
 
@@ -211,6 +269,34 @@ Re-adding `bestest_air` requires extending the RC model to support bi-directiona
 - Multi-mechanism support for different verticals
 - Additional emulator backends integrated
 - Scoring engine handles multiple domain types without modification
+
+---
+
+## Known Open Audit Findings
+
+Items surfaced by the AUDIT.md pass and not yet resolved. Severity and phase where resolution is expected. Documented here so the subnet does not claim a clean bill of health while items are open.
+
+| # | Finding | Severity | Planned Resolution |
+|---|---------|----------|--------------------|
+| 2.1 | CVRMSE dead zone when no miner clears the 0.30 threshold. Reframed: the issue is period selection and model capability, not the threshold. | High | Phase 1 resolves for bestest_air; full resolution tracks with Phase 2/3 as test cases diversify. |
+| 2.2 | Self-reported `simulations_used` is Nash-gameable; every rational miner reports 0 for the 10% convergence component. | High | Tier-2 hardening. Candidate fix: replace with validator-verifiable wall-clock submission time, or remove component. Testnet data decides. |
+| 2.3 | Near-default parameter tolerance 0.1% is bypassable by a 0.2% perturbation; on local mode defaults are ground truth. | High | Tolerance scales with parameter span rather than raw percentage. Open. |
+| 2.4 | Missing-parameter fallback: RC model fills omitted params with config defaults, so a one-dimensional attacker bypasses the all-defaults check. | High | Require full parameter set in verification; reject partial submissions. Open. |
+| 2.13 | Miner and validator disagree on zero-mean CVRMSE handling; validator skips, miner does not. | Medium | Unify handling in shared scoring module. Open. |
+| 2.14, 2.15 | Spec version not carried on the wire; miner logs a warning and continues on manifest mismatch rather than failing closed. | Medium | Add `spec_version` and enforce manifest equality on the miner side. Open. |
+| Live-run | Miners produce byte-identical CVRMSE on hard rounds, likely parameter-bounds corner convergence when signal is low. | Medium | Instrument before diagnosing. Do not patch blindly. |
+| Tier-3 | Extrinsic error parsing, websocket keepalive, BOPTEST advance timeout, health endpoint completeness, and related operational items. | Low to Medium | Tracked in AUDIT.md; addressed opportunistically during validator work. |
+
+---
+
+## Non-Goals
+
+Explicit choices not to pursue, so reviewers do not mistake absence for oversight.
+
+- **Market 2 (M&V and ESCO compliance) is deferred.** The enterprise procurement and regulated acceptance posture is inappropriate for a new subnet. Revisited only if a channel partner materializes.
+- **No period curation as a workaround for model capability.** If a round is "hard" because the RC model cannot represent the building under those conditions, the fix is more capable modeling (a phase), not hand-picking easier windows.
+- **No shortcuts to mainnet.** Every proving milestone below must hit its exit criteria with evidence. Self-declared completion without data is not acceptable.
+- **No post-hoc scoring tweaks.** The scoring formula is published and versioned. Changes go through the scoring change policy in MECHANISM.md.
 
 ---
 

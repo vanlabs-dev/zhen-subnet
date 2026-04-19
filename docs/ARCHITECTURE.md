@@ -35,7 +35,6 @@
         │  │  Verification Engine     │   │
         │  │  Scoring Engine          │   │
         │  │  Weight Setter           │   │
-        │  │  Dashboard Server        │   │
         │  └──────────┬───────────────┘   │
         └─────────────┼───────────────────┘
                       │ Dendrite (CalibrationSynapse)
@@ -119,7 +118,7 @@ The validator is the most complex component. It orchestrates rounds, manages emu
 ```
 validator/
 ├── main.py                    # Entry point, Bittensor neuron lifecycle
-├── state.py                   # State persistence (validator_state.json, fsync, crash recovery)
+├── scoring_db.py              # SQLite score persistence (WAL, spec-version-checked, windowed reads for EMA)
 ├── health.py                  # HealthServer: GET /health on 127.0.0.1:8080
 ├── alerts.py                  # WebhookAlerter: 600s cooldown per event_type
 ├── round/
@@ -138,11 +137,17 @@ validator/
 │   └── setter.py              # WeightSetter: SDK process_weights_for_netuid + manual fallback
 ├── registry/
 │   └── manifest.py            # ManifestLoader: load(), validate_manifest()
+├── scoring/
+│   ├── engine.py              # Composite computation wrapping shared scoring/ module
+│   ├── metrics.py             # Local metric wrappers
+│   ├── normalization.py       # safe_clamp and component normalization
+│   ├── breakdown.py           # Per-miner score breakdown generation
+│   └── window_ema.py          # compute_window_ema: pure function over windowed scoring_db rows
 └── utils/
     └── logging.py             # Structured logging, ~/.zhen/logs/, 14-day rotation
 ```
 
-Deleted modules (no longer in codebase): `config.py`, `emulator/data_collector.py`, `verification/simulator_loader.py`, `verification/timeout_handler.py`, `registry/registry_client.py`, `dashboard/`, `utils/hashing.py`, `utils/health.py`.
+Deleted modules (no longer in codebase): `config.py`, `emulator/data_collector.py`, `verification/simulator_loader.py`, `verification/timeout_handler.py`, `registry/registry_client.py`, `dashboard/`, `utils/hashing.py`, `utils/health.py`, `state.py` (superseded by `scoring_db.py` for score persistence; validator-level round count lives in the `validator_meta` table).
 
 ### 2.2 Round Orchestrator
 
@@ -312,7 +317,7 @@ def compute_r_squared(predicted: dict, measured: dict) -> float:
 
 Key behaviors:
 - Attempts `process_weights_for_netuid` from the Bittensor SDK at import time. If unavailable, the manual fallback path (`copy_weights_from_chain`, stake-weighted) is used.
-- `version_key` is set to `protocol.__spec_version__` (currently 2).
+- `version_key` is set to `protocol.WEIGHT_VERSION_KEY` (currently 1000), NOT `protocol.__spec_version__`. These are orthogonal: the weight version is the on-chain Yuma coordination constant; the spec version is internal protocol/scoring versioning. Conflating them (an earlier implementation error) caused the chain to misinterpret extrinsics.
 - Uses `asyncio.get_running_loop()` for async compatibility.
 - `WEIGHT_TIMEOUT_SECONDS = 120`.
 - If the scoring engine returns `{}` (all miners failed), `copy_weights_from_chain` copies the current chain weights unchanged rather than wiping them.
@@ -328,36 +333,30 @@ class WeightSetter:
             return
         uids = list(ema_scores.keys())
         weights = [ema_scores[uid] for uid in uids]
-        # version_key = protocol.__spec_version__ (= 2)
+        # version_key = protocol.WEIGHT_VERSION_KEY (= 1000)
         ...
 ```
 
-### 2.8 EMA Tracker
+### 2.8 Windowed EMA (compute_window_ema)
 
-`EMATracker` in `scoring/ema.py`. Alpha = 0.3.
+The retired stateful `EMATracker` class was replaced by a pure function, `compute_window_ema`, in `validator/scoring/window_ema.py`. The function is bit-identical to the old tracker when fed rounds sequentially, but derives state on demand from rows persisted in the SQLite `scoring_db`. This removes the separate JSON state file and makes the EMA auditable: the full input is queryable from the DB.
 
-Non-finite scores (NaN or Inf) cause decay rather than freezing the EMA: the update still applies `alpha * non_finite + (1 - alpha) * previous`, but since non-finite values propagate through float arithmetic, the resulting EMA would also become non-finite. The tracker guards against this by treating non-finite incoming scores as 0.0 for the EMA update, effectively decaying toward zero rather than contaminating the history.
-
-Miners with EMA below 1e-6 are pruned from the state dictionary.
+Alpha = 0.3 (default, matches retired tracker). Miners with EMA below 1e-6 are pruned. Non-finite composites are treated as absent (miner decays that round). If every entry decays to zero, the function returns an empty dict, signaling the caller to copy chain weights rather than publish uniform weights.
 
 ```python
-class EMATracker:
-    """Exponential Moving Average across rounds per miner."""
+def compute_window_ema(
+    rows: list[RoundScoreRow],
+    alpha: float = 0.3,
+) -> dict[int, float]:
+    """Return normalized EMA weights from windowed round scores.
 
-    def __init__(self, alpha: float = 0.3):
-        self.alpha = alpha
-        self.scores: dict[int, float] = {}
+    Rows ordered by received_at ASC, grouped by round_id. For each round,
+    present miners with finite composite blend into the running EMA;
+    absent miners (including non-finite composites) decay by (1 - alpha).
+    EMA values below 1e-6 are pruned.
 
-    def update(self, round_scores: dict[int, float]) -> None:
-        """Blend current round scores into EMA. Non-finite scores decay (not freeze)."""
-        for uid, score in round_scores.items():
-            s = score if math.isfinite(score) else 0.0
-            if uid in self.scores:
-                self.scores[uid] = self.alpha * s + (1 - self.alpha) * self.scores[uid]
-            else:
-                self.scores[uid] = s
-        # Prune near-zero miners
-        self.scores = {uid: s for uid, s in self.scores.items() if s >= 1e-6}
+    Returns empty dict if no rows OR every entry decayed to zero.
+    """
 ```
 
 ---
@@ -563,22 +562,14 @@ zhen-registry/
 
 ### 5.2 manifest.json
 
-Current manifest version: **v1.1.0**. Three test cases are live on testnet. All use `rc_network`, Brussels climate, 6 parameters, difficulty easy.
+Current manifest version: **v1.2.0** (paired with `protocol.__spec_version__ = 4`). Two test cases are active. Both use `rc_network`, Brussels climate, 6 parameters, difficulty easy. `bestest_air` was in the earlier v1.1.0 rotation but was pulled in v3 (spec bump) because the heating-only RC model produced catastrophic CVRMSE on its FCU cooling behavior. It returns as part of the Phase 1 roadmap work (see ROADMAP.md).
 
 ```json
 {
-  "version": "v1.1.0",
+  "version": "v1.2.0",
   "test_cases": [
     {
       "id": "bestest_hydronic_heat_pump",
-      "simplified_model_type": "rc_network",
-      "parameter_count": 6,
-      "difficulty": "easy",
-      "climate": "Brussels, Belgium",
-      "scoring_outputs": ["zone_air_temperature_C", "total_heating_energy_kWh"]
-    },
-    {
-      "id": "bestest_air",
       "simplified_model_type": "rc_network",
       "parameter_count": 6,
       "difficulty": "easy",
@@ -636,7 +627,9 @@ btcli subnet start --netuid {NETUID} --network test
 
 ### 6.2 Synapse Protocol Definition
 
-Current `protocol.__spec_version__ = 2`. Version 1 used linear normalization; version 2 uses power-law (p=2) + 5% score floor. State saved under v1 is rejected on load (spec version mismatch). The version key is passed to `set_weights` as `version_key`.
+Current `protocol.__spec_version__ = 4`. Version history is in `protocol/__init__.py`: v1 linear normalization; v2 power-law (p=2) + 5% score floor; v3 removed bestest_air pending cooling support; v4 expanded `required_hash_fields` to cover training_data, parameter_bounds, simulation_budget, and manifest_version (closes the MITM tamper surface from AUDIT finding 1.6). Each bump invalidates prior EMA state on load.
+
+The on-chain weight version passed to `set_weights` as `version_key` is `protocol.WEIGHT_VERSION_KEY = 1000`, which is orthogonal to `__spec_version__` and must match across all Zhen validators so Yuma aggregation remains coherent.
 
 ```python
 import bittensor as bt
@@ -664,7 +657,14 @@ class CalibrationSynapse(bt.Synapse):
     metadata: Optional[Dict] = None
 
     required_hash_fields: ClassVar[list[str]] = [
-        "test_case_id", "round_id", "train_start_hour", "train_end_hour"
+        "test_case_id",
+        "round_id",
+        "train_start_hour",
+        "train_end_hour",
+        "training_data",
+        "parameter_bounds",
+        "simulation_budget",
+        "manifest_version",
     ]
 ```
 

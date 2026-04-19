@@ -226,13 +226,13 @@ The health server binds to `127.0.0.1` (loopback) by default. It is not reachabl
 
 ## State Persistence
 
-The validator saves EMA scores and round count to `~/.zhen/validator_state.json` after each successful round. On restart, it resumes from the last known state. This prevents miners from losing accumulated reputation after a validator restart.
+The validator persists every miner's verified result per round into a local SQLite database (`~/.zhen/validator.db` by default) via `validator/scoring_db.py`. The weighted EMA is recomputed from the windowed rows each time weights are set, so no separate JSON snapshot is required. `round_count` is stored in the `validator_meta` table; on restart the validator resumes from the last persisted value rather than replaying challenges from zero.
 
 ### Crash safety
 
-- Saves are written to a unique temporary file (`validator_state.json.tmp.<pid>.<uuid>`) and fsynced before the atomic rename. A power failure mid-write leaves the previous good state intact.
-- On startup, stale `.tmp` files from prior crashes are cleaned up automatically.
-- The loaded state is validated: it must contain exactly the required keys (`round_count`, `ema_scores`, `last_round_id`, `last_round_timestamp`, `spec_version`), all EMA scores must be in [0, 1], and `spec_version` must match the running code. A version mismatch (e.g., loading spec v1 state into a v2 validator) is rejected to prevent incompatible EMA data from corrupting the weight vector.
+- SQLite runs in WAL mode with a single long-lived connection. Commits are atomic; partial writes from a crash are rolled back on next open.
+- Schema is versioned via `PRAGMA user_version` and cross-checked against `protocol.__spec_version__`. A spec-version mismatch (e.g., opening a v3 DB under a v4 validator) archives the old file and recreates a fresh DB. Incompatible EMA data cannot leak into the current weight vector.
+- Any legacy `~/.zhen/validator_state.json` from an earlier JSON-based persistence layer is automatically renamed on first open. No manual migration is required.
 
 ### Local mode safeguard
 

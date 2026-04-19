@@ -199,4 +199,12 @@ Running many low-quality miners to dilute a legitimate miner's share is mitigate
 
 ### Self-reported convergence
 
-The simulations_used field is self-reported by miners (10% of composite score). A miner can claim fewer simulations than actually used for a small convergence bonus. This advantage is bounded at 10% of the composite score and does not affect the 90% that depends on actual calibration quality.
+The simulations_used field is self-reported by miners (10% of composite score). A miner can claim fewer simulations than actually used for a small convergence bonus. This advantage is bounded at 10% of the composite score and does not affect the 90% that depends on actual calibration quality. The component remains gameable at its Nash equilibrium (every rational miner reports 0), and is tracked as an open tier-2 hardening item in ROADMAP.md. Candidate replacements: validator-verifiable wall-clock submission time, or removal of the component. Testnet data drives the decision.
+
+### CVRMSE dead zone on hard rounds
+
+When no miner clears the 0.30 hourly CVRMSE threshold, the 50% CVRMSE component collapses to zero for everyone and the composite is driven almost entirely by the remaining components. This is not a mechanism bug: it is a boundary condition that appears when the simplified model cannot physically represent the round's ground truth (for example, a heating-only RC model on summer cooling data). The Phase 1 roadmap work adds cooling support to the RC model, which resolves the most common case on testnet. Longer-horizon resolution tracks with Phases 2 and 3 as test cases diversify. See ROADMAP.md.
+
+### Zero-mean CVRMSE handling
+
+The validator skips scoring outputs whose measured mean is near zero (to avoid division instability). The miner's local objective may compute CVRMSE differently on those outputs, so a miner's self-reported training CVRMSE can diverge from the validator's held-out CVRMSE in edge cases where the training series has a near-zero mean. The shared scoring module is the authoritative reference. This is tracked as audit finding 2.13.

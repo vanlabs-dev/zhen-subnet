@@ -63,17 +63,17 @@ This is NOT: emit tokens, attract miners, hope narrative appears.
 
 The flywheel exists in design from day one but activates gradually. External revenue is months away, not immediate.
 
-**Phase 1: Benchmark Dominance (Testnet + Early Mainnet, months 1 to 6)**
+**Revenue Tier 1: Benchmark Dominance (Testnet + Early Mainnet, months 1 to 6)**
 Revenue source: emissions only.
 Value output: superior calibration results on public BOPTEST benchmarks. Every published result showing Zhen outperforming standard calibration tools is public proof of subnet output. The calibration leaderboard grows. Academic citations follow.
-Flywheel status: building the credibility needed for Phase 2.
+Flywheel status: building the credibility needed for Revenue Tier 2.
 
-**Phase 2: First Revenue Integration (Months 6 to 12)**
+**Revenue Tier 2: First Revenue Integration (Months 6 to 12)**
 Revenue source: emissions + first calibration API customers.
 API integration: building owners, energy consultancies, and HVAC contractors submit uncalibrated models + measurement data via API. Zhen returns calibrated parameters. Per-calibration pricing.
 Flywheel status: first external money entering the system.
 
-**Phase 3: Sustained External Demand (Months 12+)**
+**Revenue Tier 3: Sustained External Demand (Months 12+)**
 Revenue source: emissions + API revenue + enterprise contracts.
 Domain expansion into industrial process simulation, traffic networks, and energy grid models. Ongoing calibration subscriptions for continuous model updating as buildings change.
 Flywheel status: self-sustaining. Subnet survives even if emissions shrink.
@@ -420,9 +420,9 @@ The BOPTEST emulator represents a complex building with detailed physics (multi-
 
 The simplified model architecture varies by test case and is defined in `config.json`:
 
-**Grey-box (RC network) models:** Thermal resistance-capacitance networks that approximate building thermal dynamics. Parameters include R-values (thermal resistance of walls, roof, floor), C-values (thermal capacitance of zones), infiltration rates, solar gain coefficients, and HVAC efficiency curves. Fast to simulate (sub-second per evaluation). Suitable for Phase 1 easy test cases.
+**Grey-box (RC network) models:** Thermal resistance-capacitance networks that approximate building thermal dynamics. Parameters include R-values (thermal resistance of walls, roof, floor), C-values (thermal capacitance of zones), infiltration rates, solar gain coefficients, and HVAC efficiency curves. Fast to simulate (sub-second per evaluation). Suitable for Difficulty Tier 1 (easy) test cases.
 
-**Reduced-order EnergyPlus models:** Simplified EnergyPlus IDF files with fewer zones and coarser HVAC representations than the BOPTEST emulator. Parameters include material properties, infiltration schedules, equipment efficiencies, and setpoint offsets. Slower to simulate (10 to 60 seconds per evaluation). Suitable for Phase 2 medium test cases.
+**Reduced-order EnergyPlus models:** Simplified EnergyPlus IDF files with fewer zones and coarser HVAC representations than the BOPTEST emulator. Parameters include material properties, infiltration schedules, equipment efficiencies, and setpoint offsets. Slower to simulate (10 to 60 seconds per evaluation). Suitable for Difficulty Tier 2 (medium) test cases.
 
 **Surrogate-assisted models:** Miners may build their own ML surrogate models trained on simulator evaluations, then use the surrogate to guide parameter search. The final submission is still a set of parameters for the simplified model, evaluated by the validator on the actual simplified model, not on the surrogate.
 
@@ -489,7 +489,7 @@ When a validator receives a miner's CalibrationSynapse, the validator:
 4. Compares predicted outputs against the emulator's "ground truth" outputs
 5. Hard timeout: 5 minutes per verification simulation. Submissions exceeding timeout receive score 0.0 with reason code SIMULATION_TIMEOUT.
 
-This is cheap: one simulation run per miner. For Phase 1 test cases (RC network models), verification takes sub-second per miner. For Phase 2 test cases (reduced-order EnergyPlus), 10 to 60 seconds per miner.
+This is cheap: one simulation run per miner. For Difficulty Tier 1 test cases (RC network models), verification takes sub-second per miner. For Difficulty Tier 2 test cases (reduced-order EnergyPlus), 10 to 60 seconds per miner.
 
 ---
 
@@ -609,7 +609,7 @@ All validators compute the same split. Miners receive only training data. Held-o
 
 ## 7. Test Case Management
 
-### 7.1 Initial Library (Phase 1)
+### 7.1 Initial Library (Difficulty Tier 1)
 
 Sourced from BOPTEST and Energym:
 
@@ -646,11 +646,11 @@ New test cases follow a proposal process:
 
 Test cases vary in difficulty:
 
-**Easy (Phase 1):** Single-zone buildings with 5 to 10 calibratable parameters. Fast simulation (< 30 seconds per evaluation). Clear parameter sensitivities.
+**Difficulty Tier 1 (Easy):** Single-zone buildings with 5 to 10 calibratable parameters. Fast simulation (< 30 seconds per evaluation). Clear parameter sensitivities.
 
-**Medium (Phase 2):** Multi-zone buildings with 15 to 30 parameters. Coupled thermal zones. Non-linear HVAC behavior. 1 to 2 minutes per evaluation.
+**Difficulty Tier 2 (Medium):** Multi-zone buildings with 15 to 30 parameters. Coupled thermal zones. Non-linear HVAC behavior. 1 to 2 minutes per evaluation.
 
-**Hard (Phase 3):** Complex commercial buildings with 50+ parameters. District energy systems. Renewable integration. 3 to 5 minutes per evaluation.
+**Difficulty Tier 3 (Hard):** Complex commercial buildings with 50+ parameters. District energy systems. Renewable integration. 3 to 5 minutes per evaluation.
 
 Mixing difficulties across rounds ensures both newcomers and experts find appropriate challenges.
 
@@ -737,7 +737,7 @@ Per round, a validator must:
 - For 50 miners on RC network test cases: ~2 minutes of verification compute
 - For 50 miners on EnergyPlus test cases: ~25 to 50 minutes of verification compute
 
-Phase 1 test cases (RC network models) fit comfortably within the 72-minute tempo. Phase 2 test cases (reduced-order EnergyPlus) require more careful time budgeting and may limit concurrent miner count on slower validator hardware.
+Difficulty Tier 1 test cases (RC network models) fit comfortably within the 72-minute tempo. Difficulty Tier 2 test cases (reduced-order EnergyPlus) require more careful time budgeting and may limit concurrent miner count on slower validator hardware.
 
 ---
 
@@ -917,8 +917,8 @@ Note: `min_allowed_weights` is set to 1 on testnet during early development (ins
 
 ### 14.1 Domain Expansion
 
-| Phase | Domain | Tools | Timeline | Status |
-|-------|--------|-------|----------|--------|
+| Vertical | Domain | Tools | Timeline | Status |
+|----------|--------|-------|----------|--------|
 | 1 | Building energy | BOPTEST, EnergyPlus, Modelica | Months 1 to 6 | Planned |
 | 2 | HVAC control optimization | BOPTEST control API | Months 6 to 9 | Planned |
 | 3 | Industrial processes | Custom FMU models | Months 9 to 12 | Aspirational |
@@ -926,7 +926,7 @@ Note: `min_allowed_weights` is set to 1 on testnet during early development (ins
 | 5 | Energy grid | OpenDSS, PyPSA | Months 15 to 18 | Aspirational |
 | 6 | General FMU calibration | Any Modelica/FMI model | Months 18+ | Aspirational |
 
-Phases 3 through 6 are aspirational. Each involves significant mechanism design differences from building energy calibration (different parameter types, different simulation tools, different verification metrics). These will only be pursued after Phase 1 and 2 are stable and generating revenue. The core subnet architecture (miner-local simulation, held-out verification, deterministic scoring) transfers, but the test case library and wrapper interfaces require domain-specific engineering per phase.
+Verticals 3 through 6 are aspirational. Each involves significant mechanism design differences from building energy calibration (different parameter types, different simulation tools, different verification metrics). These will only be pursued after Verticals 1 and 2 are stable and generating revenue. The core subnet architecture (miner-local simulation, held-out verification, deterministic scoring) transfers, but the test case library and wrapper interfaces require domain-specific engineering per vertical.
 
 ### 14.2 Multi-Mechanism Potential
 
@@ -935,7 +935,7 @@ Bittensor now supports multiple incentive mechanisms per subnet. Zhen could use:
 - **Mechanism 0 (70%):** Standard calibration competition (accuracy-focused)
 - **Mechanism 1 (30%):** Uncertainty quantification competition (miners produce probability distributions over parameters, scored by log-likelihood on held-out data)
 
-This would be introduced after Phase 1 stabilizes.
+This would be introduced after Vertical 1 stabilizes.
 
 ---
 
@@ -953,7 +953,7 @@ This would be introduced after Phase 1 stabilizes.
 10. Temporal resolution: CVRMSE should be computed at what resolution? Test cases may report at different intervals (5-min, 15-min, hourly). Should all data be resampled to a common resolution, or should CVRMSE be computed at the test case's native resolution? Native resolution is simpler but makes cross-test-case comparison harder.
 11. CVRMSE normalization shape: linear (current) vs non-linear (sigmoid/exponential) to better reward marginal improvements at the top end. Testnet calibrates.
 12. Convergence efficiency: keep as self-reported (current), replace with wall-clock submission time, or remove entirely? Testnet data decides.
-13. EnergyPlus determinism verification: systematic testing of all Phase 1 test cases across Linux distros and Docker versions to confirm bit-identical outputs.
+13. EnergyPlus determinism verification: systematic testing of all Difficulty Tier 1 test cases across Linux distros and Docker versions to confirm bit-identical outputs.
 14. EMA cross-test-case blending: global EMA (current) vs per-test-case-family EMA tracks. Testnet calibrates based on observed score volatility.
 
 ---

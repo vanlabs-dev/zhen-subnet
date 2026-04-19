@@ -8,6 +8,7 @@ Bittensor subnet for decentralized digital twin calibration. Domain-agnostic pla
   - Mechanism design: docs/MECHANISM.md
   - Architecture: docs/ARCHITECTURE.md
   - Implementation plan: docs/IMPLEMENTATION.md
+  - Roadmap (markets, phases, open findings): docs/ROADMAP.md
 - Scoring logic: scoring/
 - Validator code: validator/
 - Miner code: miner/
@@ -16,7 +17,8 @@ Bittensor subnet for decentralized digital twin calibration. Domain-agnostic pla
 - Test case registry: registry/
 - Tests: tests/
 - Agent definitions: agents/AGENTS.md
-- State persistence: validator/state.py
+- Round score persistence: validator/scoring_db.py (SQLite, windowed EMA source)
+- Windowed EMA: validator/scoring/window_ema.py (pure function compute_window_ema)
 - Health endpoint: validator/health.py
 - Webhook alerts: validator/alerts.py
 - Logging: validator/utils/logging.py
@@ -43,4 +45,4 @@ Two-model design:
 - Scoring: CVRMSE 50%, NMBE 25%, R-squared 15%, convergence 10%
 - Score pipeline: raw composites -> 5% relative floor vs max -> power-law (exponent 2) -> normalize to sum=1; empty dict returned on all-zero (caller copies chain weights)
 - Single synapse: CalibrationSynapse (challenge fields + optional result fields)
-- Spec version: 2 (v1 was linear normalization; v2 added power-law + floor; tracked in protocol/__init__.py)
+- Spec version: 4 (v1 was linear normalization; v2 added power-law + floor; v3 dropped bestest_air pending cooling support; v4 expanded required_hash_fields to cover training_data, parameter_bounds, simulation_budget, manifest_version). Tracked in protocol/__init__.py. Each bump invalidates prior EMA state on load.
