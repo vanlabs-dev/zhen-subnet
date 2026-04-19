@@ -32,15 +32,16 @@ def test_load_valid_manifest(loader: ManifestLoader) -> None:
 
 
 def test_get_test_case(loader: ManifestLoader) -> None:
-    """Looking up bestest_hydronic_heat_pump returns correct fields."""
+    """Looking up bestest_air returns correct fields."""
     manifest = loader.load(MANIFEST_PATH)
-    tc = loader.get_test_case(manifest, "bestest_hydronic_heat_pump")
+    tc = loader.get_test_case(manifest, "bestest_air")
     assert tc is not None
-    assert tc["id"] == "bestest_hydronic_heat_pump"
+    assert tc["id"] == "bestest_air"
     assert tc["simplified_model_type"] == "rc_network"
-    assert tc["parameter_count"] == 6
+    assert tc["parameter_count"] == 7
     assert "zone_air_temperature_C" in tc["scoring_outputs"]
-    assert "total_heating_energy_kWh" in tc["scoring_outputs"]
+    assert "total_heating_thermal_kWh" in tc["scoring_outputs"]
+    assert "total_cooling_energy_kWh" in tc["scoring_outputs"]
 
 
 def test_get_missing_test_case(loader: ManifestLoader) -> None:

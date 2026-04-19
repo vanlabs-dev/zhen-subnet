@@ -63,7 +63,7 @@ async def test_compute_and_commit_weights_does_not_deadlock(tmp_path: Path) -> N
 
     await v.scoring_db.insert_round_scores(
         round_id="round-test",
-        test_case="bestest_hydronic",
+        test_case="bestest_air",
         train_period=(0, 336),
         test_period=(336, 504),
         verified={

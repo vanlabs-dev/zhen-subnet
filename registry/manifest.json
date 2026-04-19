@@ -1,26 +1,19 @@
 {
-  "version": "v1.2.0",
+  "version": "v2.0.0",
   "test_cases": [
     {
-      "id": "bestest_hydronic_heat_pump",
+      "id": "bestest_air",
       "simplified_model_type": "rc_network",
-      "parameter_count": 6,
+      "parameter_count": 7,
       "difficulty": "easy",
-      "climate": "Brussels, Belgium",
+      "climate": "Denver, CO, USA",
       "building_type": "residential_single_zone",
-      "hvac_type": "hydronic_heat_pump",
-      "scoring_outputs": ["zone_air_temperature_C", "total_heating_energy_kWh"],
-      "simulation_time_approx_seconds": 0.5
-    },
-    {
-      "id": "bestest_hydronic",
-      "simplified_model_type": "rc_network",
-      "parameter_count": 6,
-      "difficulty": "easy",
-      "climate": "Brussels, Belgium",
-      "building_type": "residential_single_zone",
-      "hvac_type": "hydronic_heating",
-      "scoring_outputs": ["zone_air_temperature_C", "total_heating_energy_kWh"],
+      "hvac_type": "air_heating_and_cooling",
+      "scoring_outputs": [
+        "zone_air_temperature_C",
+        "total_heating_thermal_kWh",
+        "total_cooling_energy_kWh"
+      ],
       "simulation_time_approx_seconds": 0.5
     }
   ]

@@ -1,6 +1,6 @@
 {
   "test_case_id": "bestest_air",
-  "description": "BESTEST air-based heating system",
+  "description": "BESTEST air-based heating and cooling system (Denver)",
   "simplified_model_type": "rc_network",
   "parameter_names": [
     "wall_r_value",
@@ -8,7 +8,8 @@
     "zone_capacitance",
     "infiltration_ach",
     "hvac_cop",
-    "solar_gain_factor"
+    "solar_gain_factor",
+    "hvac_cop_cooling"
   ],
   "parameter_bounds": {
     "wall_r_value": [0.5, 10.0],
@@ -16,7 +17,8 @@
     "zone_capacitance": [50000.0, 500000.0],
     "infiltration_ach": [0.1, 2.0],
     "hvac_cop": [1.5, 6.0],
-    "solar_gain_factor": [0.0, 1.0]
+    "solar_gain_factor": [0.0, 1.0],
+    "hvac_cop_cooling": [1.5, 6.0]
   },
   "defaults": {
     "wall_r_value": 3.5,
@@ -24,25 +26,32 @@
     "zone_capacitance": 200000.0,
     "infiltration_ach": 0.5,
     "hvac_cop": 3.5,
-    "solar_gain_factor": 0.4
+    "solar_gain_factor": 0.4,
+    "hvac_cop_cooling": 3.0
   },
   "scoring_outputs": [
     "zone_air_temperature_C",
-    "total_heating_energy_kWh"
+    "total_heating_thermal_kWh",
+    "total_cooling_energy_kWh"
   ],
   "simulation_budget": 1000,
   "difficulty": "easy",
-  "climate": "Brussels, Belgium",
+  "climate": "Denver, CO, USA",
   "building_type": "residential_single_zone",
-  "hvac_type": "air_heating",
+  "hvac_type": "air_heating_and_cooling",
   "boptest_output_mapping": {
     "zone_air_temperature_C": {
       "boptest_var": "zon_reaTRooAir_y",
       "unit_conversion": "kelvin_to_celsius",
       "resample_method": "mean"
     },
-    "total_heating_energy_kWh": {
+    "total_heating_thermal_kWh": {
       "boptest_var": "fcu_reaPHea_y",
+      "unit_conversion": "watts_to_kwh",
+      "resample_method": "sum"
+    },
+    "total_cooling_energy_kWh": {
+      "boptest_var": "fcu_reaPCoo_y",
       "unit_conversion": "watts_to_kwh",
       "resample_method": "sum"
     }
