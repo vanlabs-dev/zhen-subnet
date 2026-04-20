@@ -2,8 +2,8 @@
 
 <!-- FORMATTING RULE: This document must NEVER contain em dashes or en dashes. Use commas, periods, colons, or parentheses instead. -->
 
-**Status:** Phase 1 complete. Differentiated weights confirmed in live testnet round 0 post-Phase-1. bestest_air active with year-round cooling. Phase 2 planning underway.
-**Updated:** 2026-04-19
+**Status:** Phase 1 complete. Differentiated weights confirmed in live testnet round 0 post-Phase-1. bestest_air active with year-round cooling. Phase 2a (Market 2 alignment) planning underway.
+**Updated:** 2026-04-20
 
 This document tracks two parallel tracks: the proving milestones from testnet validation through mainnet launch and revenue, and the technical capability phases that expand what the subnet can physically calibrate. Both tracks share the same codebase and the same incentive mechanism. Neither is skippable, and they must advance together: a proving milestone that requires multi-zone buildings is gated on the technical phase that adds multi-zone support.
 
@@ -11,15 +11,15 @@ This document tracks two parallel tracks: the proving milestones from testnet va
 
 ## Target Markets
 
-Zhen is built primarily for two customer segments. Technical scope, test case selection, and algorithm choices flow from these.
+Priority updated 2026-04-20 after strategy validation. Technical scope, test case selection, and algorithm choices flow from these.
 
-**Market 1: Commercial HVAC model predictive control.** Vendors such as BrainBox AI, PassiveLogic, and internal teams at Siemens, Johnson Controls, Honeywell, and Schneider Electric who build MPC stacks for mid and large commercial buildings. They need calibrated thermal and HVAC models as the foundation of their control layer. The calibration step is the bottleneck, not the controller. Zhen sells the calibration output, not the MPC.
+**Market 2 (primary near-term): Small calibration consultancies and individual M&V practitioners.** Independent engineers and small firms producing ASHRAE Guideline 14 calibrations for Measurement and Verification of energy conservation measures. This segment is technical (understands CVRMSE and NMBE directly), has active calibration budget, and runs short procurement cycles. NOT tier-1 ESCOs (Schneider, Johnson Controls, Siemens Building Technologies) whose enterprise procurement and regulated acceptance posture remains a hard sell for a new subnet. Primary near-term revenue target because small-consultancy buyers can be engaged without channel partners.
 
-**Market 3: Grid services and demand response.** Utilities, aggregators, and ISO-facing platforms that need accurate thermal models to forecast building flexibility, shed load, or participate in ancillary services markets. Same core asset as Market 1 (a calibrated thermal and HVAC model) used for a different downstream decision.
+**Market 1 (growth market, beyond year one): Commercial HVAC model predictive control.** Vendors such as BrainBox AI, PassiveLogic, and internal teams at Siemens, Johnson Controls, Honeywell, and Schneider Electric who build MPC stacks for mid and large commercial buildings. They need calibrated thermal and HVAC models as the foundation of their control layer. The calibration step is the bottleneck, not the controller. Zhen sells the calibration output, not the MPC. Requires multi-zone commercial model support (Phase 2b onward) before the pitch is credible.
 
-**Market 4 (fallout coverage): Single-zone residential.** Current test cases (bestest_hydronic_heat_pump, bestest_hydronic) fall in this segment. It is not actively optimized for, but the subnet covers it as a byproduct of validating the core mechanism on simple geometry before scaling.
+**Market 3: Grid services and demand response.** Utilities, aggregators, and ISO-facing platforms that need accurate thermal models to forecast building flexibility, shed load, or participate in ancillary services markets. Same core asset as Market 1 (a calibrated thermal and HVAC model) used for a different downstream decision. Unchanged from prior framing.
 
-**Market 2 (deferred): M&V and ESCO compliance.** ASHRAE Guideline 14 calibrations for Measurement and Verification of energy conservation measures. Enterprise sales cycle, regulated acceptance criteria, and a procurement posture that does not fit a new subnet. Deferred indefinitely; revisit only if a channel partner shows up.
+**Market 4 (fallout coverage): Single-zone residential.** Current test cases (bestest_hydronic_heat_pump, bestest_hydronic) fall in this segment. It is not actively optimized for, but the subnet covers it as a byproduct of validating the core mechanism on simple geometry before scaling. Unchanged from prior framing.
 
 ---
 
@@ -42,18 +42,36 @@ Phases expand what the simplified model can physically represent. Each phase gat
 - Both miners pass ceiling gate (CVRMSE 0.51 and 0.70); scores differentiate via rank-based component.
 - Open finding 2.1 (CVRMSE dead zone) resolved: rank-based scoring with a year-round test case eliminates the floor-tie equilibrium.
 
-### Phase 2: Two-zone commercial (Market 1 and 3 minimum viable scope)
+### Phase 2a: Market 2 alignment (next up, estimated 2-3 weeks)
 
-**Goal:** First real multi-zone architecture work. Introduces zone-to-zone thermal coupling and shared HVAC plant modeling, which is the distinguishing requirement of commercial buildings vs. residential.
+**Goal:** Make Zhen visible and credible to small calibration consultancies and M&V practitioners before Phase 2b's larger mechanism work ships. Small scope by design: output alignment with how Market 2 buyers already evaluate calibration quality.
+
+**Scope:**
+- ASHRAE Guideline 14 metrics surfaced at evaluation and report time: monthly CVRMSE (threshold ≤ 30%) and monthly NMBE (threshold ≤ ±10%). These are in addition to, not replacing, the rank-based hourly CVRMSE used for on-chain weights.
+- Calibration report output format: a deterministic artifact per calibration (JSON plus human-readable summary) containing calibrated parameters, monthly CVRMSE and NMBE, hourly CVRMSE, R-squared, input time window, and BOPTEST test case reference. Format must be stable enough that a Market 2 practitioner can hand it to a client as part of a deliverable.
+- No on-chain scoring change; the existing rank-based CVRMSE pipeline is unchanged. Phase 2a is an output-layer addition.
+
+**Exits:**
+- Monthly CVRMSE and NMBE computed and logged per round.
+- Calibration report artifact emitted alongside each round's results.
+- At least one external reviewer (Market 2 profile) validates the report format reads as useful deliverable material.
+
+### Phase 2b: Two-zone commercial (Market 1 and 3 minimum viable scope, estimated 4-6 weeks)
+
+**Goal:** First real multi-zone architecture work. Introduces zone-to-zone thermal coupling and shared HVAC plant modeling, which is the distinguishing requirement of commercial buildings vs. residential. Unlocks Market 1 growth track.
 
 **Scope:**
 - Target case: `multizone_office_simple_hydronic` (Brussels, 2 zones, fan-coils + heat pump + chiller).
-- RC model gains inter-zone coupling terms and a shared-plant abstraction (single heat pump or chiller feeding multiple zone loops).
+- RC model gains inter-zone coupling terms and a shared-plant abstraction (single heat pump or chiller feeding multiple zone loops). Parameter count expands roughly 3-4x relative to Phase 1.
 - Manifest adds the new case; rotation keeps Phase 1 cases during overlap period.
 
 **Open decisions tracked at Phase 1 exit:**
 - Whether Bayesian optimization scales to the expanded parameter space (expected: marginal; will validate empirically before picking a migration path).
 - Whether convergence budgeting needs to change per test case based on simulation cost.
+
+### Phase 2c: Public benchmark dashboard (acknowledged, not scheduled)
+
+Public-facing leaderboard showing per-miner, per-test-case CVRMSE and NMBE, calibration reports (anonymized or opt-in), and benchmark trend data. Credibility multiplier for Market 2 (practitioners want to cite Zhen's numbers) and Market 1 (vendors want to evaluate against public benchmarks). Deferred: will schedule after Phase 2a and 2b are stable and initial Market 2 traction data is available.
 
 ### Phase 3: Five-zone reference commercial (full Market 1 and 3 scope)
 
@@ -346,7 +364,7 @@ Key learnings confirmed by implementation and live-run data.
 
 Explicit choices not to pursue, so reviewers do not mistake absence for oversight.
 
-- **Market 2 (M&V and ESCO compliance) is deferred.** The enterprise procurement and regulated acceptance posture is inappropriate for a new subnet. Revisited only if a channel partner materializes.
+- **Tier-1 ESCO enterprise sales remain out of scope near-term.** Market 2 primary-near-term framing targets small consultancies and individual M&V practitioners, not Schneider/Johnson Controls/Siemens Building Technologies. Enterprise procurement and regulated acceptance posture stays inappropriate for a new subnet; revisit only if a channel partner materializes.
 - **No period curation as a workaround for model capability.** If a round is "hard" because the RC model cannot represent the building under those conditions, the fix is more capable modeling (a phase), not hand-picking easier windows.
 - **No shortcuts to mainnet.** Every proving milestone below must hit its exit criteria with evidence. Self-declared completion without data is not acceptable.
 - **No post-hoc scoring tweaks.** The scoring formula is published and versioned. Changes go through the scoring change policy in DESIGN.md.

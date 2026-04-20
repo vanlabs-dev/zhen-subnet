@@ -30,7 +30,7 @@ Testnet live on Bittensor subnet 456. Comprehensive unit + integration test suit
 
 Zhen uses a two-model architecture. Validators run a complex emulator (BOPTEST/EnergyPlus) to generate ground truth data, then challenge miners to calibrate a simplified RC network model against that data. Miners use Bayesian optimization to find parameters that minimize the gap between the simplified model and reality. Validators score submissions on held-out test data using ASHRAE metrics (CVRMSE, NMBE, R-squared) and set weights on-chain via Yuma Consensus.
 
-The platform is domain-agnostic. The first vertical is building energy simulation. The active test case is bestest_air (Denver, CO, USA climate; four-pipe fan coil unit; 7 calibratable parameters; 3 scoring outputs). Phase 2 plans multi-zone commercial buildings.
+The platform is domain-agnostic. The first vertical is building energy simulation. The active test case is bestest_air (Denver, CO, USA climate; four-pipe fan coil unit; 7 calibratable parameters; 3 scoring outputs). Phase 2a aligns outputs with ASHRAE Guideline 14 for small calibration consultancies and M&V practitioners (primary near-term customer); Phase 2b expands to multi-zone commercial buildings for the Commercial HVAC MPC growth market.
 
 BOPTEST test cases are benchmark fixtures, not deployment constraints. Zhen calibrates building simulation models globally. The test case locations (Denver, Brussels, Chicago) are the simulator locations, not where Zhen can deploy. Clients anywhere can use Zhen by providing their own weather data, building description, and measured operational data.
 
