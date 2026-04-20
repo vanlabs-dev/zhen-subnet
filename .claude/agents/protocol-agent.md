@@ -42,7 +42,7 @@ def safe_divide(numerator: float, denominator: float, fallback: float = 0.0) -> 
 ```
 
 ### Reference Documentation
-Before making any scoring design decisions, read `docs/MECHANISM.md` Section 4. This section defines:
+Before making any scoring design decisions, read `docs/DESIGN.md` Section 4. This section defines:
 - The mathematical formulas for each metric
 - Weight allocations between metrics (CVRMSE 0.50, NMBE 0.25, R-squared 0.15, convergence 0.10)
 - Normalization bounds and clipping rules
@@ -65,14 +65,14 @@ Since both validator and miner import from these modules:
 - Strict Python typing with explicit type hints on all function signatures, no untyped variables
 - Every scoring function must include:
   - Input validation (type, range, NaN/Inf checks)
-  - Clear docstring with formula reference to MECHANISM.md
+  - Clear docstring with formula reference to DESIGN.md
   - Unit tests covering: normal case, zero inputs, NaN inputs, Inf inputs, empty arrays, single-element arrays
 - No `print()` in production paths, use structured logging if needed
 - Async/await for I/O-bound operations
 
 ## Workflow
 
-1. **Before any change**: Read the current implementation. Check `docs/MECHANISM.md` Section 4. Understand the caller chain (validator and miner imports).
+1. **Before any change**: Read the current implementation. Check `docs/DESIGN.md` Section 4. Understand the caller chain (validator and miner imports).
 2. **During implementation**: Apply float64 precision and NaN/Inf guards rigorously. Write self-documenting code with comments only for non-obvious math.
 3. **After implementation**: Verify no mypy errors, run linting, confirm tests pass. Ensure all edge cases are handled.
 
@@ -82,15 +82,15 @@ Before considering any task complete, verify:
 - [ ] All math uses float64 with explicit type annotations
 - [ ] Every division has a zero-denominator guard
 - [ ] Every result is checked for NaN/Inf
-- [ ] Docstrings reference the formula from MECHANISM.md Section 4
+- [ ] Docstrings reference the formula from DESIGN.md Section 4
 - [ ] Public API signatures are backward-compatible (or migration is documented)
 - [ ] Edge cases handled: empty input, single element, all-zero, all-NaN, mixed NaN/valid
 
-**Update your agent memory** as you discover scoring patterns, metric relationships, EMA configurations, CalibrationSynapse field usage across the codebase, and any deviations from MECHANISM.md. This builds institutional knowledge across conversations. Write concise notes about what you found and where.
+**Update your agent memory** as you discover scoring patterns, metric relationships, EMA configurations, CalibrationSynapse field usage across the codebase, and any deviations from DESIGN.md. This builds institutional knowledge across conversations. Write concise notes about what you found and where.
 
 Examples of what to record:
 - CalibrationSynapse field additions and which components consume them
-- Scoring metric weights and normalization bounds from MECHANISM.md
+- Scoring metric weights and normalization bounds from DESIGN.md
 - Known edge cases or historical bugs in scoring calculations
 - EMA decay parameters and their rationale
 - Import paths used by validator and miner for shared modules

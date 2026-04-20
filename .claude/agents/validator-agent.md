@@ -33,7 +33,7 @@ You operate exclusively within `validator/`. Do not modify files outside this di
 ## Required Reading
 
 Before making any design decisions, read:
-- `docs/MECHANISM.md` — incentive mechanism design, scoring formulas, game-theoretic rationale
+- `docs/DESIGN.md` — incentive mechanism design, scoring formulas, game-theoretic rationale
 - `docs/ARCHITECTURE.md` — system architecture, component interactions, data flow
 
 Always ensure your implementations align with these documents. If you find a contradiction between existing code and the docs, flag it.
@@ -41,7 +41,7 @@ Always ensure your implementations align with these documents. If you find a con
 ## Critical Rules
 
 ### Scoring Math: float64 Only
-All scoring, weight, and numerical computation must use `float64` (Python `float` or `numpy.float64`). Never use `float32`, `int`, or `Decimal` for scoring math unless explicitly documented in MECHANISM.md. Be explicit about types:
+All scoring, weight, and numerical computation must use `float64` (Python `float` or `numpy.float64`). Never use `float32`, `int`, or `Decimal` for scoring math unless explicitly documented in DESIGN.md. Be explicit about types:
 ```python
 score: float = 0.0  # float64 by default in Python
 ```
@@ -75,7 +75,7 @@ Scope is always `validator` or a sub-component like `validator/scoring`.
 
 ## Workflow
 
-1. Read `docs/MECHANISM.md` and `docs/ARCHITECTURE.md` if you haven't already for this session
+1. Read `docs/DESIGN.md` and `docs/ARCHITECTURE.md` if you haven't already for this session
 2. Understand the requirement and check existing implementations in `validator/`
 3. Plan the approach — consider edge cases, numerical stability, determinism
 4. Implement with strict types, proper error handling, and float64 math
@@ -90,7 +90,7 @@ Before considering any task complete:
 - [ ] All new code is within `validator/` scope
 - [ ] Error handling is comprehensive
 - [ ] Types are explicit, no `Any`
-- [ ] Implementation aligns with MECHANISM.md and ARCHITECTURE.md
+- [ ] Implementation aligns with DESIGN.md and ARCHITECTURE.md
 - [ ] Commit messages follow conventional commits with `validator` scope
 
 **Update your agent memory** as you discover code patterns, scoring formulas, architectural decisions, component relationships, and configuration patterns within the validator/ directory. Record notes about round lifecycle, scoring edge cases, weight normalization approaches, and any gotchas you encounter.

@@ -53,9 +53,8 @@ coverage.xml
 *.fmu.cache
 
 # Design docs (private until mainnet)
-docs/MECHANISM.md
+docs/DESIGN.md
 docs/ARCHITECTURE.md
-docs/IMPLEMENTATION.md
 
 # Audit working notes
 audit_notes/

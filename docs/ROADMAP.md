@@ -66,6 +66,52 @@ Phases expand what the simplified model can physically represent. Each phase gat
 
 ---
 
+## Engineering History
+
+Foundational engineering preceded the proving milestones. Recorded here for archaeological context; all phases below are complete.
+
+| Phase | Scope | Status |
+|---|---|---|
+| 0: Foundation | Repo scaffolding, `RCNetworkBackend`, first test case config, determinism test, uv/ruff/mypy/pytest toolchain | Complete |
+| 1: Scoring Engine | `compute_cvrmse`, `compute_nmbe`, `compute_r_squared`, `safe_clamp`, `ScoringEngine.compute` with power-law (p=2) + 5% floor, EMA (alpha=0.3), 22 red-team adversarial tests | Complete |
+| 2: Simulation Infrastructure | `ZhenSimulator` interface, `RCNetworkBackend`, `BOPTESTClient`, `ManifestLoader`, `Dockerfile.miner`, `Dockerfile.validator` | Complete |
+| 3: Validator Core | `RoundOrchestrator`, deterministic test case selection and train/test split (`hashlib.sha256`), `VerificationEngine` with 5-minute hard timeout, score breakdown | Complete |
+| 4: Miner Core | `BayesianCalibrator` (scikit-optimize), `CalibrationEngine`, `CalibrationOutput` | Complete |
+| 5: Bittensor Integration | `CalibrationSynapse`, `ZhenValidator` and `ZhenMiner` neurons, dendrite/axon wiring, on-chain weight setting | Complete |
+| 6: Testnet Deployment | Subnet 456 live on testnet, manifest v1.1.0 through v2.0.0, red-team hardening, public docs (MINE.md, SCORING.md, RULES.md, VALIDATE.md, llms.txt) | Complete |
+
+Open engineering items not tied to a specific phase: CALIBRATE.md tutorial (pending), local eval harness (pending), public dashboard (deferred post-mainnet), external validator onboarding (tracked as Milestone 5).
+
+### Testnet Success Criteria
+
+Adapted for Phase 1 scope (single active test case, rank-based scoring). Mainnet launch criteria are stricter, see Milestone 6.
+
+| Metric | Target |
+|--------|--------|
+| Scoring differentiation | Top miner 2x+ above median composite score |
+| ASHRAE compliance | Top miner achieves CVRMSE within the ranked top-K on the active test case. Absolute thresholds re-apply as the model tier advances in Phase 2/3 and the library grows. |
+| Verification consistency | All validators produce identical scores (within float tolerance) |
+| Miner count | 5+ active with distinct strategies |
+| Score stability | No inf/NaN/zero-div in 7 days continuous |
+| Miner feedback | No unresolved scoring complaints |
+| Round completion | 95%+ of rounds complete within tempo |
+| Test case diversity | 1 active case in Phase 1 (bestest_air); 3+ cases in rotation by Phase 2/3 as multi-zone models come online |
+
+### Development Risk Register
+
+Operational and miner-trust risks are covered in the open-audit-findings table below. This table tracks development and deployment risks only.
+
+| Risk | Contingency |
+|------|-------------|
+| BOPTEST emulator does not run on target hardware | Fall back to Energym models. Build custom emulator from EnergyPlus IDF files. |
+| RC network model produces physically implausible results | Pivot to reduced-order EnergyPlus as Phase 1 simplified model. Slower but more realistic. |
+| Bittensor SDK incompatible with synapse design | Simplify synapse (reduce field count, use JSON strings instead of typed dicts). |
+| Testnet TAO insufficient | Request more from community. Reduce initial validator/miner count. |
+| No external miners join testnet | Run 3 to 5 miners yourself with different algorithms. Prove differentiation internally. |
+| Scoring weights produce poor differentiation | Adjust weights based on testnet data. Expected and planned for. |
+
+---
+
 ## Milestone 1: Prove Two-Model Architecture [COMPLETE, 2026-04-14]
 
 **Goal:** Demonstrate that the core design works: complex emulator generates ground truth, miners calibrate simplified models against it, scoring differentiates quality.
@@ -231,7 +277,7 @@ Deep red-team audit and subsequent fixes addressing correctness, safety, and ope
 - Documentation complete and externally verified: MINE.md, SCORING.md, RULES.md, CALIBRATE.md, VALIDATE.md
 - Register on Bittensor mainnet
 
-The public dashboard is deferred to post-mainnet (see IMPLEMENTATION.md Phase 6 and ARCHITECTURE.md Section 7). It is not required for launch.
+The public dashboard is deferred to post-mainnet (see ARCHITECTURE.md Section 7). It is not required for launch.
 
 ---
 
@@ -303,7 +349,7 @@ Explicit choices not to pursue, so reviewers do not mistake absence for oversigh
 - **Market 2 (M&V and ESCO compliance) is deferred.** The enterprise procurement and regulated acceptance posture is inappropriate for a new subnet. Revisited only if a channel partner materializes.
 - **No period curation as a workaround for model capability.** If a round is "hard" because the RC model cannot represent the building under those conditions, the fix is more capable modeling (a phase), not hand-picking easier windows.
 - **No shortcuts to mainnet.** Every proving milestone below must hit its exit criteria with evidence. Self-declared completion without data is not acceptable.
-- **No post-hoc scoring tweaks.** The scoring formula is published and versioned. Changes go through the scoring change policy in MECHANISM.md.
+- **No post-hoc scoring tweaks.** The scoring formula is published and versioned. Changes go through the scoring change policy in DESIGN.md.
 
 ---
 

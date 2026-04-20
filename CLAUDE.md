@@ -5,10 +5,9 @@ Bittensor subnet for decentralized digital twin calibration. Domain-agnostic pla
 
 ## Routing Table
 - Design docs: docs/
-  - Mechanism design: docs/MECHANISM.md
+  - Design rationale: docs/DESIGN.md
   - Architecture: docs/ARCHITECTURE.md
-  - Implementation plan: docs/IMPLEMENTATION.md
-  - Roadmap (markets, phases, open findings): docs/ROADMAP.md
+  - Roadmap (markets, phases, engineering history, open findings): docs/ROADMAP.md
 - Scoring logic: scoring/
 - Validator code: validator/
 - Miner code: miner/
@@ -36,7 +35,7 @@ Bittensor subnet for decentralized digital twin calibration. Domain-agnostic pla
 - Every module has a module-level docstring
 - Spec version tracked in protocol/__init__.py, increment on breaking changes
 - `__spec_version__` (internal protocol/scoring version) and `WEIGHT_VERSION_KEY` (on-chain Yuma coordination constant) are orthogonal and live in protocol/__init__.py. Never conflate them; set_weights must use WEIGHT_VERSION_KEY only
-- Design docs (docs/MECHANISM.md, docs/ARCHITECTURE.md, docs/IMPLEMENTATION.md) are gitignored reference documents from the initial design phase. Implementation may differ from spec where noted. The codebase is the source of truth, not the design docs.
+- Design docs (docs/DESIGN.md, docs/ARCHITECTURE.md) are gitignored reference documents. DESIGN.md covers why the mechanism works the way it does; ARCHITECTURE.md covers how the system is built. Current-state facts (constants, active test cases, shipped features) live in SCORING.md, ROADMAP.md, and the code itself. The codebase is the source of truth.
 
 ## Key Architecture
 Two-model design:
