@@ -53,6 +53,13 @@ class VerifiedResult:
     CVRMSE_CEILING during scoring. It is a display/diagnostic flag,
     not a rejection: the miner may still earn weight through the
     NMBE, R-squared, and convergence components.
+
+    predicted_values and measured_values hold the per-output
+    time-series produced during verification. They are populated for
+    clean submissions so the CalibrationReport builder can emit
+    per-output metrics and monthly-resolution aggregates. They are
+    None for rejected submissions. Scoring never reads these fields;
+    they are carried purely for the report consumer.
     """
 
     cvrmse: float = 0.0
@@ -63,6 +70,8 @@ class VerifiedResult:
     reason: str = ""
     detail: str = ""
     cvrmse_ceiling_exceeded: bool = False
+    predicted_values: dict[str, list[float]] | None = None
+    measured_values: dict[str, list[float]] | None = None
 
 
 class ScoringEngine:

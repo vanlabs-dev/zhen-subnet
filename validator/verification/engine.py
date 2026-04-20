@@ -184,6 +184,8 @@ class VerificationEngine:
             r_squared=r_squared,
             simulations_used=simulations_used,
             calibrated_params=calibrated_params,
+            predicted_values=predicted_values,
+            measured_values=measured_values,
         )
 
     def _load_config(self, test_case_id: str) -> dict[str, Any]:
