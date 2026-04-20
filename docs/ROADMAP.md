@@ -309,7 +309,7 @@ The public dashboard is deferred to post-mainnet (see ARCHITECTURE.md Section 7)
 
 ## Known Open Audit Findings
 
-Items surfaced by the AUDIT.md pass and not yet resolved. Severity and phase where resolution is expected. Documented here so the subnet does not claim a clean bill of health while items are open.
+Items not yet resolved from the initial pre-Phase-1 code audit. Severity and phase where resolution is expected. Documented here so the subnet does not claim a clean bill of health while items are open.
 
 | # | Finding | Severity | Status |
 |---|---------|----------|--------|
@@ -325,7 +325,7 @@ Items surfaced by the AUDIT.md pass and not yet resolved. Severity and phase whe
 | New | `validator/scoring/breakdown.py` still references `CVRMSE_THRESHOLD=0.30` for diagnostic display only. No impact on actual scoring; breakdown output may show misleading normalized values. | Low | Open. Fix when breakdown consumer is next updated. Code change required; out of scope for this docs pass. |
 | New | R-squared component produces huge negative values on low-variance outputs (cooling near-zero in winter; heating near-zero in summer). Values are clipped to 0 by `max(0, R^2)`. Not blocking; consider restricting R^2 to zone_temperature output or dropping the component. | Low | Open. |
 | New | Registry-to-runtime sync is manual: operators must run `cp registry/test_cases/$tc/*.json ~/.zhen/test_cases/$tc/` after any config change. Automation is on the Phase 2 backlog. | Low | Open. Documented in MINE.md and VALIDATE.md. |
-| Tier-3 | Extrinsic error parsing, websocket keepalive, BOPTEST advance timeout, health endpoint completeness, and related operational items. | Low to Medium | Tracked in AUDIT.md; addressed opportunistically. |
+| Tier-3 | Extrinsic error parsing, websocket keepalive, BOPTEST advance timeout, health endpoint completeness, and related operational items. | Low to Medium | Addressed opportunistically during validator work. Individual items tracked in code TODOs and commit history. |
 
 ---
 
