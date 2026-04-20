@@ -879,12 +879,16 @@ Output: test case candidates for library expansion.
 | commit_reveal_period | 3 | 3 tempo delay |
 | weights_rate_limit | 100 | Set every ~100 blocks |
 
-Key validator timing constants (from validator/main.py):
-- `TEMPO_BLOCKS` = 360
-- `BLOCK_TIME_SECONDS` = 12
-- `DEFAULT_TEMPO_SECONDS` = 4320 (360 * 12)
-- `CHALLENGE_TIMEOUT_SECONDS` = 600 (challenge phase timeout)
-- `WEIGHT_TIMEOUT_SECONDS` = 120 (weight-setting phase timeout)
+Key validator timing constants:
+
+Bittensor defines a tempo as 360 blocks (approximately 4320 seconds at 12-second block time). The Zhen validator does not sleep a full tempo between rounds; it runs its own challenge loop at a configurable interval and relies on the chain's `weights_rate_limit` hyperparameter to gate weight commits.
+
+- `BLOCK_TIME_SECONDS = 12` (`validator/main.py`): seconds per Bittensor block.
+- `DEFAULT_CHALLENGE_INTERVAL_SECONDS = 900` (`validator/main.py`): default seconds between challenge rounds (15 minutes); configurable via CLI.
+- `DEFAULT_WEIGHT_CHECK_INTERVAL_SECONDS = 60` (`validator/main.py`): polling cadence for block-gated weight commits.
+- `CHALLENGE_TIMEOUT_SECONDS = 600` (`validator/main.py`): max seconds miners have to respond to a challenge.
+- `WEIGHT_TIMEOUT_SECONDS = 120` (`WeightSetter`, `validator/weights/setter.py`): max seconds for chain weight submission.
+- `TIMEOUT_SECONDS = 300` (`VerificationEngine`, `validator/verification/engine.py`): max seconds per miner verification run.
 
 Note: `min_allowed_weights` is set to 1 on testnet during early development (insufficient miners for the target value of 8). Will be increased as miner count grows toward mainnet.
 

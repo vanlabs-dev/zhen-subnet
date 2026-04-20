@@ -803,8 +803,7 @@ zhen/
 │   ├── VALIDATE.md             # Validator setup guide
 │   ├── SCORING.md              # Full scoring formula + examples
 │   ├── CALIBRATE.md            # Building energy calibration tutorial
-│   ├── RULES.md                # Explicit constraints
-│   └── CHANGELOG.md            # Versioned changes
+│   └── RULES.md                # Explicit constraints
 ├── validator/                  # Validator codebase (Section 2)
 ├── miner/                      # Miner codebase (Section 3)
 ├── protocol/                   # Shared synapse definitions

@@ -137,14 +137,22 @@ python -m validator.main --netuid 456 --network test --no-local-mode --boptest-u
 
 ### Constants
 
-| Name | Value | Description |
-|---|---|---|
-| `TEMPO_BLOCKS` | 360 | Blocks per tempo |
-| `BLOCK_TIME_SECONDS` | 12 | Seconds per block |
-| `DEFAULT_TEMPO_SECONDS` | 4320 | Seconds between rounds (~72 minutes) |
-| `CHALLENGE_TIMEOUT_SECONDS` | 600 | Max seconds miners have to respond to a challenge |
-| `WEIGHT_TIMEOUT_SECONDS` | 120 | Max seconds for chain weight submission |
-| `VERIFICATION_TIMEOUT_SECONDS` | 300 | Max seconds per miner verification run |
+Bittensor defines a tempo as 360 blocks (approximately 4320 seconds at 12-second block time). The Zhen validator does not sleep a full tempo between rounds; it runs its own challenge loop at a configurable interval and relies on the chain's `weights_rate_limit` hyperparameter to gate weight commits.
+
+| Name | Location | Value | Description |
+|---|---|---|---|
+| `BLOCK_TIME_SECONDS` | `validator/main.py` | 12 | Seconds per Bittensor block |
+| `DEFAULT_CHALLENGE_INTERVAL_SECONDS` | `validator/main.py` | 900 | Default seconds between challenge rounds (15 min) |
+| `DEFAULT_WEIGHT_CHECK_INTERVAL_SECONDS` | `validator/main.py` | 60 | Polling cadence for block-gated weight commits |
+| `DEFAULT_CLEANUP_INTERVAL_SECONDS` | `validator/main.py` | 86400 | Seconds between scoring DB cleanup runs (24h) |
+| `DEFAULT_CLEANUP_RETENTION_HOURS` | `validator/main.py` | 168 | Hours of history the scoring DB retains (7 days) |
+| `CHALLENGE_TIMEOUT_SECONDS` | `validator/main.py` | 600 | Max seconds miners have to respond to a challenge |
+| `CHAIN_READ_TIMEOUT_SECONDS` | `validator/main.py` | 30 | Timeout for read-only chain RPCs |
+| `METAGRAPH_SYNC_TIMEOUT_SECONDS` | `validator/main.py` | 60 | Timeout for `metagraph.sync()` calls |
+| `WEIGHT_COMMIT_WATCHDOG_SECONDS` | `validator/main.py` | 180 | Watchdog threshold for hung weight commits |
+| `WEIGHT_TIMEOUT_SECONDS` | `WeightSetter` | 120 | Max seconds for chain weight submission |
+| `TIMEOUT_SECONDS` | `VerificationEngine` | 300 | Max seconds per miner verification run |
+| `MAX_PARALLEL` | `VerificationEngine` | 8 | Verification concurrency semaphore size |
 
 ## How a Validation Round Works
 
@@ -159,7 +167,7 @@ python -m validator.main --netuid 456 --network test --no-local-mode --boptest-u
 9. **Score**: Composite scores are computed using the weighted formula (see [SCORING.md](SCORING.md)).
 10. **Update EMA**: Scores are blended into the per-miner exponential moving average (alpha=0.3).
 11. **Set weights**: Normalized EMA scores are submitted on-chain via the weight setter.
-12. **Sleep**: Validator waits for the next tempo period (4320 seconds with default settings).
+12. **Sleep**: Validator waits `challenge_interval_seconds` between rounds (default 900 seconds / 15 minutes, configurable via `--challenge-interval-seconds`). Weight commits run on a separate loop that polls block-rate-limit eligibility every `weight_check_interval_seconds` (default 60 seconds) and commits when the chain allows.
 
 ## BOPTEST Setup
 
@@ -227,7 +235,7 @@ The health server binds to `127.0.0.1` (loopback) by default. It is not reachabl
 
 ## State Persistence
 
-The validator persists every miner's verified result per round into a local SQLite database (`~/.zhen/validator.db` by default) via `validator/scoring_db.py`. The weighted EMA is recomputed from the windowed rows each time weights are set, so no separate JSON snapshot is required. `round_count` is stored in the `validator_meta` table; on restart the validator resumes from the last persisted value rather than replaying challenges from zero.
+The validator persists every miner's verified result per round into a local SQLite database (`~/.zhen/scoring.db` by default) via `validator/scoring_db.py`. The weighted EMA is recomputed from the windowed rows each time weights are set, so no separate JSON snapshot is required. `round_count` is stored in the `validator_meta` table; on restart the validator resumes from the last persisted value rather than replaying challenges from zero.
 
 ### Crash safety
 
