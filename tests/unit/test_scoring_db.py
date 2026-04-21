@@ -9,7 +9,45 @@ import pytest
 
 import protocol
 from scoring.engine import VerifiedResult
+from scoring.report import CalibrationReport
 from validator.scoring_db import ScoringDB
+
+
+def _make_report(round_id: str = "round-0", uid: int = 1, hotkey: str = "5Abc") -> CalibrationReport:
+    """Build a minimal valid CalibrationReport for persistence tests."""
+    return CalibrationReport(
+        round_id=round_id,
+        miner_uid=uid,
+        miner_hotkey=hotkey,
+        test_case_id="bestest_air",
+        manifest_version="v2.0.0",
+        spec_version=protocol.__spec_version__,
+        training_period_start_hour=0,
+        training_period_end_hour=336,
+        test_period_start_hour=336,
+        test_period_end_hour=504,
+        calibrated_parameters={"wall_r_value": 3.5},
+        hourly_cvrmse=0.12,
+        hourly_nmbe=-0.02,
+        hourly_r_squared=0.88,
+        monthly_cvrmse=0.06,
+        monthly_nmbe=0.01,
+        per_output_metrics={
+            "zone_air_temperature_C": {
+                "hourly_cvrmse": 0.05,
+                "hourly_nmbe": -0.01,
+                "hourly_r_squared": 0.92,
+            }
+        },
+        ashrae_hourly_cvrmse_pass=True,
+        ashrae_hourly_nmbe_pass=True,
+        ashrae_monthly_cvrmse_pass=True,
+        ashrae_monthly_nmbe_pass=True,
+        ashrae_overall_pass=True,
+        simulations_used=150,
+        verification_reason=None,
+        generated_at="2026-04-21T12:00:00.000000Z",
+    )
 
 
 def _make_verified(cvrmse: float = 0.1, nmbe: float = 0.01, r2: float = 0.9, sims: int = 100) -> VerifiedResult:
@@ -314,5 +352,182 @@ def test_round_count_overwrites_not_appends(tmp_path: Path) -> None:
         db.set_round_count(5)
         db.set_round_count(3)
         assert db.get_round_count() == 3
+    finally:
+        db.close()
+
+
+def test_calibration_reports_table_exists_on_fresh_db(tmp_path: Path) -> None:
+    """Fresh DB creates the calibration_reports table and its indexes."""
+    db = ScoringDB(db_path=tmp_path / "scoring.db")
+    try:
+        assert db._conn is not None
+        tables = {row[0] for row in db._conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        assert "calibration_reports" in tables
+
+        indexes = {
+            row[0]
+            for row in db._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='calibration_reports'"
+            ).fetchall()
+        }
+        assert "idx_calibration_reports_miner_hotkey" in indexes
+        assert "idx_calibration_reports_created_at" in indexes
+    finally:
+        db.close()
+
+
+async def test_persist_and_retrieve_report(tmp_path: Path) -> None:
+    """Persisting and retrieving a report round-trips through JSON."""
+    db = ScoringDB(db_path=tmp_path / "scoring.db")
+    try:
+        report = _make_report(round_id="round-5", uid=7, hotkey="5AbcXyz")
+        await db.persist_report(report)
+
+        restored = await db.get_report("round-5", 7)
+        assert restored is not None
+        assert restored.round_id == "round-5"
+        assert restored.miner_uid == 7
+        assert restored.miner_hotkey == "5AbcXyz"
+        assert restored.test_case_id == "bestest_air"
+        assert restored.calibrated_parameters == {"wall_r_value": 3.5}
+        assert restored.hourly_cvrmse == pytest.approx(0.12)
+        assert restored.ashrae_overall_pass is True
+    finally:
+        db.close()
+
+
+async def test_persist_report_idempotent(tmp_path: Path) -> None:
+    """Persisting the same (round_id, uid) twice is idempotent (last-write-wins)."""
+    db = ScoringDB(db_path=tmp_path / "scoring.db")
+    try:
+        first = _make_report(round_id="round-0", uid=1)
+        await db.persist_report(first)
+
+        # Replace with a different report under the same primary key.
+        second = _make_report(round_id="round-0", uid=1, hotkey="5ReplacedKey")
+        await db.persist_report(second)
+
+        restored = await db.get_report("round-0", 1)
+        assert restored is not None
+        assert restored.miner_hotkey == "5ReplacedKey"
+
+        assert db._conn is not None
+        count = db._conn.execute(
+            "SELECT COUNT(*) FROM calibration_reports WHERE round_id = 'round-0' AND miner_uid = 1"
+        ).fetchone()[0]
+        assert count == 1
+    finally:
+        db.close()
+
+
+async def test_get_report_not_found(tmp_path: Path) -> None:
+    """Missing (round_id, uid) returns None."""
+    db = ScoringDB(db_path=tmp_path / "scoring.db")
+    try:
+        assert await db.get_report("nonexistent", 999) is None
+    finally:
+        db.close()
+
+
+async def test_get_reports_by_miner(tmp_path: Path) -> None:
+    """Multiple reports for one miner across rounds are returned newest-first."""
+    db = ScoringDB(db_path=tmp_path / "scoring.db")
+    try:
+        for round_idx in range(3):
+            await db.persist_report(_make_report(round_id=f"round-{round_idx}", uid=1, hotkey="5MyHotkey"))
+        # A different miner in between; must not leak across hotkeys
+        await db.persist_report(_make_report(round_id="round-1", uid=2, hotkey="5Other"))
+
+        reports = await db.get_reports_by_miner("5MyHotkey", limit=10)
+        assert len(reports) == 3
+        assert {r.round_id for r in reports} == {"round-0", "round-1", "round-2"}
+        assert all(r.miner_hotkey == "5MyHotkey" for r in reports)
+
+        other = await db.get_reports_by_miner("5Other", limit=10)
+        assert len(other) == 1
+        assert other[0].round_id == "round-1"
+    finally:
+        db.close()
+
+
+async def test_get_reports_by_miner_respects_limit(tmp_path: Path) -> None:
+    """Limit caps the returned list length."""
+    db = ScoringDB(db_path=tmp_path / "scoring.db")
+    try:
+        for round_idx in range(5):
+            await db.persist_report(_make_report(round_id=f"round-{round_idx}", uid=1, hotkey="5Hk"))
+
+        reports = await db.get_reports_by_miner("5Hk", limit=2)
+        assert len(reports) == 2
+    finally:
+        db.close()
+
+
+async def test_cleanup_older_than_prunes_reports(tmp_path: Path) -> None:
+    """cleanup_older_than deletes aged rows from calibration_reports too."""
+    db = ScoringDB(db_path=tmp_path / "scoring.db")
+    try:
+        # Persist a fresh report
+        await db.persist_report(_make_report(round_id="round-new", uid=1, hotkey="5Hk"))
+
+        # Insert an aged report directly to backdate its created_at.
+        old_iso = (datetime.now(tz=timezone.utc) - timedelta(hours=500)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        assert db._conn is not None
+        db._conn.execute(
+            """
+            INSERT INTO calibration_reports (
+                round_id, miner_uid, miner_hotkey, test_case_id,
+                spec_version, report_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "round-old",
+                1,
+                "5Hk",
+                "bestest_air",
+                protocol.__spec_version__,
+                _make_report(round_id="round-old", uid=1, hotkey="5Hk").to_json(),
+                old_iso,
+            ),
+        )
+
+        pre = db._conn.execute("SELECT COUNT(*) FROM calibration_reports").fetchone()[0]
+        assert pre == 2
+
+        await db.cleanup_older_than(hours=168)
+
+        post = db._conn.execute("SELECT COUNT(*) FROM calibration_reports").fetchone()[0]
+        assert post == 1
+        surviving = await db.get_reports_by_miner("5Hk", limit=10)
+        assert len(surviving) == 1
+        assert surviving[0].round_id == "round-new"
+    finally:
+        db.close()
+
+
+async def test_persist_report_with_rejected_submission(tmp_path: Path) -> None:
+    """Rejected submissions (NaN metrics, reason set) round-trip correctly."""
+    import math
+
+    db = ScoringDB(db_path=tmp_path / "scoring.db")
+    try:
+        report = _make_report()
+        report.hourly_cvrmse = float("nan")
+        report.hourly_nmbe = float("nan")
+        report.monthly_cvrmse = float("nan")
+        report.monthly_nmbe = float("nan")
+        report.ashrae_hourly_cvrmse_pass = False
+        report.ashrae_overall_pass = False
+        report.verification_reason = "DEFAULT_PARAMS"
+        report.per_output_metrics = {}
+
+        await db.persist_report(report)
+
+        restored = await db.get_report(report.round_id, report.miner_uid)
+        assert restored is not None
+        assert restored.verification_reason == "DEFAULT_PARAMS"
+        assert math.isnan(restored.hourly_cvrmse)
+        assert math.isnan(restored.monthly_nmbe)
+        assert restored.ashrae_overall_pass is False
     finally:
         db.close()

@@ -24,13 +24,15 @@ else:
 
 import protocol
 from protocol.synapse import CalibrationSynapse
+from scoring.report import CalibrationReport
+from scoring.report_builder import build_calibration_report
 from validator.alerts import WebhookAlerter
 from validator.health import HealthServer
 from validator.network.challenge_sender import ChallengeSender
 from validator.network.result_receiver import ResponseParser
 from validator.registry.manifest import ManifestLoader
 from validator.round import split_generator, test_case_selector
-from validator.round.orchestrator import RoundOrchestrator
+from validator.round.orchestrator import RoundOrchestrator, derive_aggregate_methods
 from validator.scoring.engine import ScoringEngine
 from validator.scoring.window_ema import compute_window_ema
 from validator.scoring_db import ScoringDB
@@ -396,6 +398,7 @@ class ZhenValidator:
         # 6. Send to miners
         submissions: dict[int, dict[str, Any]] = {}
         axons, uids = self._get_miner_axons()
+        responses: list[CalibrationSynapse] = []
 
         if not axons:
             logger.warning("No miners available to query")
@@ -449,7 +452,115 @@ class ZhenValidator:
             composites=scores,
         )
 
+        # 10. Build and persist CalibrationReport per miner (spec v7), and
+        #     attach each miner's own report to their response synapse object.
+        #     Persistence is the authoritative record; synapse attachment is a
+        #     per-miner annotation for downstream delivery mechanisms.
+        await self._build_and_attach_reports(
+            round_id=round_id,
+            test_case=test_case,
+            config=config,
+            train_period=train_period,
+            test_period=test_period,
+            verified=verified,
+            responses=responses,
+            uids=uids,
+        )
+
         logger.info(f"=== {round_id} complete (persisted) ===")
+
+    async def _build_and_attach_reports(
+        self,
+        round_id: str,
+        test_case: dict[str, Any],
+        config: dict[str, Any],
+        train_period: tuple[int, int],
+        test_period: tuple[int, int],
+        verified: dict[int, Any],
+        responses: list[CalibrationSynapse],
+        uids: list[int],
+    ) -> None:
+        """Build a CalibrationReport per verified miner, persist, and attach.
+
+        For each entry in ``verified``, constructs a CalibrationReport using
+        the per-output resample_method derived from the test case config,
+        persists the report to the ScoringDB ``calibration_reports`` table,
+        and writes the serialized dict onto the matching response synapse's
+        ``calibration_report`` field. Miners whose hotkey cannot be resolved
+        from the metagraph are logged at DEBUG and given an empty hotkey
+        string; the report still persists so operators retain a record.
+
+        Args:
+            round_id: Validator round identifier.
+            test_case: Test case dict from the manifest.
+            config: Loaded test case config (carries boptest_output_mapping).
+            train_period: ``(start_hour, end_hour)`` training window.
+            test_period: ``(start_hour, end_hour)`` held-out window.
+            verified: Mapping of UID to VerifiedResult.
+            responses: Ordered list of response synapses from the dendrite
+                call, parallel to ``uids``.
+            uids: Ordered list of miner UIDs corresponding to ``responses``.
+        """
+        aggregate_methods = derive_aggregate_methods(config)
+
+        uid_to_hotkey = self._build_uid_hotkey_map()
+        uid_to_response = dict(zip(uids, responses, strict=False))
+
+        reports_by_uid: dict[int, CalibrationReport] = {}
+        for uid, v in verified.items():
+            hotkey = uid_to_hotkey.get(uid, "")
+            if not hotkey:
+                logger.debug(f"UID {uid}: no hotkey resolved from metagraph; persisting report with empty hotkey")
+
+            report = build_calibration_report(
+                round_id=round_id,
+                miner_uid=uid,
+                miner_hotkey=hotkey,
+                test_case_id=test_case["id"],
+                manifest_version=self.manifest["version"],
+                spec_version=protocol.__spec_version__,
+                training_period=train_period,
+                test_period=test_period,
+                verified_result=v,
+                predicted_values=v.predicted_values or {},
+                measured_values=v.measured_values or {},
+                output_aggregate_methods=aggregate_methods,
+            )
+
+            try:
+                await self.scoring_db.persist_report(report)
+            except Exception:
+                logger.exception(f"UID {uid}: failed to persist calibration report; continuing")
+                continue
+
+            reports_by_uid[uid] = report
+
+            # Attach this miner's own report (and only their own) to their
+            # response synapse. Cross-miner leakage is impossible because
+            # we key by UID and each response only goes back to its sender.
+            response = uid_to_response.get(uid)
+            if response is not None:
+                try:
+                    response.calibration_report = report.to_dict()
+                except Exception:
+                    logger.exception(f"UID {uid}: failed to attach report to response synapse; continuing")
+
+            logger.debug(f"UID {uid} ASHRAE overall pass: {report.ashrae_overall_pass}")
+
+        logger.info(f"Built {len(reports_by_uid)} calibration reports (persisted to DB, attached to synapse responses)")
+
+    def _build_uid_hotkey_map(self) -> dict[int, str]:
+        """Return ``{uid: hotkey}`` from the current metagraph, or ``{}``.
+
+        Safe to call before bittensor is wired up; returns an empty dict
+        in that case so callers fall back to an empty hotkey string.
+        """
+        if self.metagraph is None:
+            return {}
+        mapping: dict[int, str] = {}
+        for neuron in self.metagraph.neurons:
+            mapping[int(neuron.uid)] = str(neuron.hotkey)
+        return mapping
 
     async def _interruptible_sleep(self, seconds: float) -> None:
         """Sleep until duration elapses or shutdown is signalled.

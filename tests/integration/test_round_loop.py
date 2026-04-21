@@ -11,8 +11,10 @@ from typing import Any
 
 import pytest
 
+import protocol
+from scoring.report_builder import build_calibration_report
 from validator.round import split_generator, test_case_selector
-from validator.round.orchestrator import RoundOrchestrator
+from validator.round.orchestrator import RoundOrchestrator, derive_aggregate_methods
 from validator.scoring import breakdown
 from validator.scoring.engine import ScoringEngine
 from validator.scoring.window_ema import compute_window_ema
@@ -86,6 +88,27 @@ async def _run_round(
         verified=verified,
         composites=scores,
     )
+
+    # Build and persist a CalibrationReport per miner (spec v7).
+    config = orchestrator.load_test_case_config(test_case["id"])
+    aggregate_methods = derive_aggregate_methods(config)
+    for uid, v in verified.items():
+        report = build_calibration_report(
+            round_id=round_id,
+            miner_uid=uid,
+            miner_hotkey=f"5HotkeyUid{uid}",
+            test_case_id=test_case["id"],
+            manifest_version=orchestrator.manifest.get("version", "v1.0.0"),
+            spec_version=protocol.__spec_version__,
+            training_period=train_period,
+            test_period=test_period,
+            verified_result=v,
+            predicted_values=v.predicted_values or {},
+            measured_values=v.measured_values or {},
+            output_aggregate_methods=aggregate_methods,
+        )
+        await scoring_db.persist_report(report)
+
     window_rows = await scoring_db.get_scores_in_window(hours=72)
     weights = compute_window_ema(window_rows, alpha=0.3)
 
@@ -149,6 +172,17 @@ async def test_full_round_local(tmp_path: Path) -> None:
         window_rows = result["window_rows"]
         assert {r.uid for r in window_rows} == {0, 1, 2}
         assert all(r.round_id == "round-0" for r in window_rows)
+
+        # CalibrationReports persisted for each miner.
+        for uid in (0, 1, 2):
+            report = await scoring_db.get_report("round-0", uid)
+            assert report is not None, f"Expected report for UID {uid}"
+            assert report.round_id == "round-0"
+            assert report.miner_uid == uid
+            assert report.miner_hotkey == f"5HotkeyUid{uid}"
+            # No cross-miner leakage: the hotkey on the persisted report
+            # matches the UID's own hotkey.
+            assert str(uid) in report.miner_hotkey
     finally:
         scoring_db.close()
 

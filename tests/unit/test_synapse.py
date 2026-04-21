@@ -105,6 +105,70 @@ def test_synapse_optional_results() -> None:
     assert synapse.simulations_used is None
     assert synapse.training_cvrmse is None
     assert synapse.metadata is None
+    assert synapse.calibration_report is None
+
+
+def test_synapse_calibration_report_roundtrip() -> None:
+    """calibration_report carries a CalibrationReport dict through Pydantic."""
+    from protocol.synapse import CalibrationSynapse
+    from scoring.report import CalibrationReport
+
+    report = CalibrationReport(
+        round_id="round-7",
+        miner_uid=2,
+        miner_hotkey="5Test",
+        test_case_id="bestest_air",
+        manifest_version="v2.0.0",
+        spec_version=7,
+        training_period_start_hour=0,
+        training_period_end_hour=336,
+        test_period_start_hour=336,
+        test_period_end_hour=504,
+        calibrated_parameters={"wall_r_value": 3.5},
+        hourly_cvrmse=0.12,
+        hourly_nmbe=-0.02,
+        hourly_r_squared=0.88,
+        monthly_cvrmse=0.06,
+        monthly_nmbe=0.01,
+        per_output_metrics={},
+        ashrae_hourly_cvrmse_pass=True,
+        ashrae_hourly_nmbe_pass=True,
+        ashrae_monthly_cvrmse_pass=True,
+        ashrae_monthly_nmbe_pass=True,
+        ashrae_overall_pass=True,
+        simulations_used=150,
+        verification_reason=None,
+        generated_at="2026-04-21T12:00:00.000000Z",
+    )
+
+    synapse = CalibrationSynapse()
+    synapse.calibration_report = report.to_dict()
+
+    # Pydantic round-trip must preserve the report payload.
+    data = synapse.model_dump()
+    restored = CalibrationSynapse(**data)
+
+    assert restored.calibration_report is not None
+    assert restored.calibration_report["round_id"] == "round-7"
+    assert restored.calibration_report["miner_uid"] == 2
+    assert restored.calibration_report["ashrae_overall_pass"] is True
+
+    # And the validator-side helper can rebuild the typed report from it.
+    rebuilt = CalibrationReport.from_dict(restored.calibration_report)
+    assert rebuilt.round_id == "round-7"
+    assert rebuilt.miner_uid == 2
+    assert rebuilt.hourly_cvrmse == 0.12
+
+
+def test_calibration_report_not_in_required_hash_fields() -> None:
+    """The report is validator-populated post-submission; it must not be
+    part of the hash-protected set or cross-validator consensus will
+    diverge on the same miner response.
+    """
+    from protocol.synapse import CalibrationSynapse
+
+    synapse = CalibrationSynapse()
+    assert "calibration_report" not in synapse.required_hash_fields
 
 
 def test_required_hash_fields_includes_payload() -> None:

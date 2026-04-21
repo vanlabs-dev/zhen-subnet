@@ -38,6 +38,40 @@ def validate_config_bounds(config: dict[str, Any]) -> None:
             raise ValueError(f"Inverted bounds for {name}: lo ({lo}) >= hi ({hi})")
 
 
+def derive_aggregate_methods(config: dict[str, Any]) -> dict[str, str]:
+    """Extract per-output monthly aggregation method from a test case config.
+
+    Reads ``config["boptest_output_mapping"][<output>]["resample_method"]``
+    for each scoring output and returns a flat ``{output_name: "mean" | "sum"}``
+    dict suitable for passing to
+    :func:`scoring.report_builder.build_calibration_report`.
+
+    Outputs without an explicit ``resample_method`` entry fall back to
+    ``"mean"`` (the same default the monthly metrics module uses). Outputs
+    missing from ``boptest_output_mapping`` entirely are skipped; the
+    report builder treats missing methods as mean by default.
+
+    Args:
+        config: Test case config dict (as produced by
+            :meth:`RoundOrchestrator.load_test_case_config`).
+
+    Returns:
+        Dict from scoring output name to ``"mean"`` or ``"sum"``.
+    """
+    mapping = config.get("boptest_output_mapping", {})
+    scoring_outputs = config.get("scoring_outputs", [])
+    methods: dict[str, str] = {}
+    for name in scoring_outputs:
+        entry = mapping.get(name)
+        if not isinstance(entry, dict):
+            continue
+        method = entry.get("resample_method", "mean")
+        if method not in ("mean", "sum"):
+            method = "mean"
+        methods[name] = method
+    return methods
+
+
 class RoundOrchestrator:
     """Orchestrates a single calibration round.
 

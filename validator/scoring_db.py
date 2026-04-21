@@ -25,6 +25,7 @@ from pathlib import Path
 
 import protocol
 from scoring.engine import VerifiedResult
+from scoring.report import CalibrationReport
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,23 @@ CREATE TABLE IF NOT EXISTS validator_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS calibration_reports (
+    round_id TEXT NOT NULL,
+    miner_uid INTEGER NOT NULL,
+    miner_hotkey TEXT NOT NULL,
+    test_case_id TEXT NOT NULL,
+    spec_version INTEGER NOT NULL,
+    report_json TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    PRIMARY KEY (round_id, miner_uid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_calibration_reports_miner_hotkey
+    ON calibration_reports(miner_hotkey);
+
+CREATE INDEX IF NOT EXISTS idx_calibration_reports_created_at
+    ON calibration_reports(created_at);
 """
 
 
@@ -85,7 +103,7 @@ class RoundScoreRow:
 class ScoringDB:
     """Rolling score store for validator calibration rounds."""
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, db_path: Path | None = None) -> None:
         """Open (or create) the scoring DB at ``db_path``.
@@ -370,7 +388,13 @@ class ScoringDB:
         return [RoundScoreRow(*row) for row in cur.fetchall()]
 
     async def cleanup_older_than(self, hours: int = 168) -> int:
-        """Delete rows older than ``hours`` (default 7 days). Returns count."""
+        """Delete rows older than ``hours`` (default 7 days). Returns count.
+
+        Applies the same cutoff to both ``round_scores`` (via ``received_at``)
+        and ``calibration_reports`` (via ``created_at``) so the two tables
+        share a single retention window. Returned count is the sum across
+        both tables.
+        """
         return await asyncio.to_thread(self._cleanup_older_than_sync, hours)
 
     def _cleanup_older_than_sync(self, hours: int) -> int:
@@ -379,19 +403,104 @@ class ScoringDB:
         cutoff_expr = f"-{int(hours)} hours"
         self._conn.execute("BEGIN")
         try:
-            cur = self._conn.execute(
+            cur_scores = self._conn.execute(
                 """
                 DELETE FROM round_scores
                 WHERE received_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
                 """,
                 (cutoff_expr,),
             )
-            deleted = int(cur.rowcount)
+            cur_reports = self._conn.execute(
+                """
+                DELETE FROM calibration_reports
+                WHERE created_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)
+                """,
+                (cutoff_expr,),
+            )
+            deleted = int(cur_scores.rowcount) + int(cur_reports.rowcount)
             self._conn.execute("COMMIT")
             return deleted
         except Exception:
             self._conn.execute("ROLLBACK")
             raise
+
+    async def persist_report(self, report: CalibrationReport) -> None:
+        """Persist a CalibrationReport to the ``calibration_reports`` table.
+
+        Idempotent via the ``(round_id, miner_uid)`` primary key: re-inserting
+        the same pair replaces the prior row. The full report is stored as
+        a JSON blob in ``report_json`` (via :meth:`CalibrationReport.to_json`)
+        so future schema evolution of CalibrationReport does not require a
+        table migration.
+        """
+        await asyncio.to_thread(self._persist_report_sync, report)
+
+    def _persist_report_sync(self, report: CalibrationReport) -> None:
+        """Synchronous body of :meth:`persist_report`."""
+        assert self._conn is not None
+        self._conn.execute("BEGIN")
+        try:
+            self._conn.execute(
+                """
+                INSERT OR REPLACE INTO calibration_reports (
+                    round_id, miner_uid, miner_hotkey, test_case_id,
+                    spec_version, report_json
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    report.round_id,
+                    int(report.miner_uid),
+                    report.miner_hotkey,
+                    report.test_case_id,
+                    int(report.spec_version),
+                    report.to_json(),
+                ),
+            )
+            self._conn.execute("COMMIT")
+        except Exception:
+            self._conn.execute("ROLLBACK")
+            raise
+
+    async def get_report(self, round_id: str, miner_uid: int) -> CalibrationReport | None:
+        """Return the report for ``(round_id, miner_uid)`` or ``None``."""
+        return await asyncio.to_thread(self._get_report_sync, round_id, miner_uid)
+
+    def _get_report_sync(self, round_id: str, miner_uid: int) -> CalibrationReport | None:
+        """Synchronous body of :meth:`get_report`."""
+        assert self._conn is not None
+        row = self._conn.execute(
+            "SELECT report_json FROM calibration_reports WHERE round_id = ? AND miner_uid = ?",
+            (round_id, int(miner_uid)),
+        ).fetchone()
+        if row is None:
+            return None
+        import json as _json
+
+        return CalibrationReport.from_dict(_json.loads(row[0]))
+
+    async def get_reports_by_miner(self, miner_hotkey: str, limit: int = 100) -> list[CalibrationReport]:
+        """Return up to ``limit`` most recent reports for ``miner_hotkey``.
+
+        Ordered by ``created_at`` descending. Intended for future dashboard
+        consumption (Phase 2c); not used by the round loop.
+        """
+        return await asyncio.to_thread(self._get_reports_by_miner_sync, miner_hotkey, limit)
+
+    def _get_reports_by_miner_sync(self, miner_hotkey: str, limit: int) -> list[CalibrationReport]:
+        """Synchronous body of :meth:`get_reports_by_miner`."""
+        assert self._conn is not None
+        cur = self._conn.execute(
+            """
+            SELECT report_json FROM calibration_reports
+            WHERE miner_hotkey = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (miner_hotkey, int(limit)),
+        )
+        import json as _json
+
+        return [CalibrationReport.from_dict(_json.loads(row[0])) for row in cur.fetchall()]
 
     def close(self) -> None:
         """Close the connection. Safe to call multiple times."""

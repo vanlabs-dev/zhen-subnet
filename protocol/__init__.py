@@ -1,6 +1,6 @@
 """Shared synapse definitions for validator-miner communication."""
 
-__spec_version__: int = 6
+__spec_version__: int = 7
 """Protocol spec version. Increment when scoring formula, synapse format,
 or verification logic changes in a backward-incompatible way. Internal
 versioning only, NOT the on-chain weight version.
@@ -30,6 +30,17 @@ History:
        are rejected at the ceiling gate and receive zero CVRMSE
        component score for the round. NMBE, R-squared, and convergence
        components unchanged. Invalidates v5 EMA state on load.
+    7: CalibrationReport wired end-to-end. CalibrationSynapse gains an
+       optional calibration_report response field (serialized
+       CalibrationReport dict, validator-populated per miner after
+       verification). ScoringDB gains a calibration_reports table
+       keyed by (round_id, miner_uid) persisting the full report as
+       JSON. Validator round flow builds a report per miner, persists
+       to DB, and attaches each miner's own report to their response
+       synapse object. Miners see None on pre-v7 clients (field is
+       optional) and a populated dict on v7+. Rejected submissions
+       still get reports (with NaN metrics and verification_reason
+       set). Invalidates v6 scoring.db on load.
 """
 
 WEIGHT_VERSION_KEY: int = 1000

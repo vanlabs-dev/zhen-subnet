@@ -48,6 +48,14 @@ if _HAS_BITTENSOR:
         training_cvrmse: Optional[float] = None
         metadata: Optional[dict] = None
 
+        # Validator-populated report field (spec v7). Carries the miner's own
+        # CalibrationReport (serialized via CalibrationReport.to_dict()) after
+        # verification. Miners MUST NOT populate this on submission; the
+        # validator sets it per miner before the response is delivered back.
+        # Older miners (pre-v7) that do not know about this field still
+        # deserialize cleanly because it is optional with a None default.
+        calibration_report: Optional[dict] = None
+
         required_hash_fields: list = [
             "test_case_id",
             "round_id",
@@ -84,3 +92,6 @@ else:
         simulations_used: Optional[int] = None
         training_cvrmse: Optional[float] = None
         metadata: Optional[dict] = None
+
+        # Validator-populated report field (spec v7).
+        calibration_report: Optional[dict] = None
